@@ -1,0 +1,33 @@
+<Window x:Class="SharpKit.Windows.Data.FormEditors.Other.ScriptEditor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
+        mc:Ignorable="d"
+        Title="Script Editor" Height="450" Width="800">
+    <Grid RowDefinitions="Auto,4*,80,Auto">
+        <Menu>
+            <MenuItem Header="File">
+                <MenuItem Header="Save" />
+                <Separator />
+                <MenuItem Header="Close" />    
+            </MenuItem>
+            <MenuItem Header="Build">
+                <MenuItem Header="Compile"></MenuItem>
+            </MenuItem>
+        </Menu>
+        
+        <avalonedit:TextEditor Grid.Row="1" FontFamily="Consolas" FontSize="10pt" x:Name="CodeEditor" Padding="10" />
+        
+        <TextBlock Grid.Row="2" Margin="5">
+            Compiler output...
+        </TextBlock>
+        
+        <StatusBar Grid.Row="3">
+            <Label HorizontalAlignment="Left" x:Name="LineStatus">Line 0</Label>
+            <Label HorizontalAlignment="Left" x:Name="ColumnStatus">Column 0</Label>
+            <Separator Width="1" HorizontalAlignment="Left" />
+        </StatusBar>
+    </Grid>
+</Window>

@@ -1,0 +1,66 @@
+﻿<Window x:Class="SharpKit.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:SharpKit"
+        xmlns:windows="clr-namespace:SharpKit.Windows"
+        xmlns:docking="http://schemas.devzest.com/presentation/docking"
+        mc:Ignorable="d"
+        WindowState="Maximized"
+        Title="{Binding Title}" Height="450" Width="800">
+    
+    <Window.InputBindings>
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenDataWindow}"></KeyBinding>
+    </Window.InputBindings>
+    
+    <Window.DataContext>
+        <windows:MainWindowVM />
+    </Window.DataContext>
+    
+    <Window.Resources>
+        <Style TargetType="MenuItem">
+            <Setter Property="Margin" Value="2, 3, 2, 3" />
+        </Style>
+    </Window.Resources>
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        
+        <Menu Grid.Row="0">
+            <MenuItem Header="_File">
+                <MenuItem Header="_Data..." Click="File_Data_OnClick" />
+                <Separator />
+                <MenuItem Header="_Save" />
+            </MenuItem>
+            <MenuItem Header="_Edit"></MenuItem>
+            <MenuItem Header="_View"></MenuItem>
+            <MenuItem Header="_World"></MenuItem>
+            <MenuItem Header="_Navmesh"></MenuItem>
+            <MenuItem Header="_Character"></MenuItem>
+            <MenuItem Header="_Gameplay"></MenuItem>
+            <MenuItem Header="_Help"></MenuItem>
+            <MenuItem Header="E_xtensions"></MenuItem>
+            <MenuItem Header="[_SharpKit]"></MenuItem>
+        </Menu>
+        
+        <ToolBarTray Grid.Row="1">
+            <ToolBarTray.Resources>
+                <Style TargetType="Image">
+                    <Setter Property="Width" Value="18" />
+                </Style>
+            </ToolBarTray.Resources>
+            <ToolBar Band="1" BandIndex="1">
+                <Button Click="File_Data_OnClick"><Image Source="/Resources/Icons/folder.png" /></Button>
+                <Button><Image Source="/Resources/Icons/save.png" /></Button>
+                <Separator />
+                <Button><Image Source="/Resources/Icons/undo.png" /></Button>
+                <Button><Image Source="/Resources/Icons/redo.png" /></Button>
+            </ToolBar>
+        </ToolBarTray>
+    </Grid>
+</Window>

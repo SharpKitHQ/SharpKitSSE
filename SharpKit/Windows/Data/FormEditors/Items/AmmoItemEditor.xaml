@@ -1,0 +1,89 @@
+<Window x:Class="SharpKit.Windows.Data.FormEditors.Items.AmmoItemEditor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d"
+        Title="Ammo" SizeToContent="Height" Width="800">
+    <Grid ColumnDefinitions="*,*" RowDefinitions="*,Auto" Margin="10">
+        <StackPanel Orientation="Vertical" Grid.Row="0" Grid.Column="0" Margin="0, 0, 10, 0">
+            <Label>ID</Label>
+            <TextBox Text="{Binding EditorID}" />
+            
+            <Label Margin="0, 5, 0, 0">Name</Label>
+            <TextBox Text="{Binding ItemName}" />
+            
+            <Label Margin="0, 5, 0, 0">Short Name</Label>
+            <TextBox Text="{Binding ShortName}" />
+            
+            <Label Margin="0, 5, 0, 0">Value</Label>
+            <TextBox Text="{Binding Value}" />
+            
+            <Label Margin="0, 5, 0, 0">Damage</Label>
+            <TextBox Text="{Binding Damage}" />
+            
+            <Label Margin="0, 5, 0, 0">Weight</Label>
+            <TextBox Text="{Binding Weight}" />
+            
+            <Label Margin="0, 5, 0, 0">Projectile</Label>
+            <ComboBox ItemsSource="{Binding Projectiles}" SelectedItem="{Binding Projectile}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding EditorID}" />
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            
+            <StackPanel Orientation="Horizontal" Margin="0, 5, 0, 0">
+                <CheckBox IsChecked="{Binding IgnoresNormalWeaponRes}" VerticalAlignment="Center" />
+                <Label VerticalAlignment="Center">Ignores Normal Weapon Resistance</Label>
+            </StackPanel>
+            
+            <StackPanel Orientation="Horizontal" Margin="0, 5, 0, 0">
+                <CheckBox IsChecked="{Binding Playable}" VerticalAlignment="Center" />
+                <Label VerticalAlignment="Center">Playable</Label>
+            </StackPanel>
+            
+            <StackPanel Orientation="Horizontal" Margin="0, 5, 0, 0">
+                <CheckBox IsChecked="{Binding Bolt}" VerticalAlignment="Center" />
+                <Label VerticalAlignment="Center">Bolt</Label>
+            </StackPanel>
+            
+            <Label Margin="0, 5, 0, 0">Pickup Sound</Label>
+            <Button Content="{Binding PickupSound.EditorID}"></Button>
+            
+            <Label Margin="0, 5, 0, 0">Description</Label>
+            <TextBox Text="{Binding Description}" Height="200" />
+        </StackPanel>
+        
+        <StackPanel Orientation="Vertical" Grid.Row="0" Grid.Column="1">
+            <Label>Inventory Image</Label>
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBox Text="{Binding InventoryImage}" Margin="0, 0, 5, 0" Grid.Column="0" VerticalAlignment="Center" IsReadOnly="True" />
+                <Button Grid.Column="1" Margin="0, 0, 5, 0" VerticalAlignment="Center">Edit</Button>
+                <Border Grid.Column="2" Width="30" Height="30" Background="Gray"></Border>
+            </Grid>
+            
+            <Label>Message Icon</Label>
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBox Text="{Binding MessageIcon}" Margin="0, 0, 5, 0" Grid.Column="0" VerticalAlignment="Center" IsReadOnly="True" />
+                <Button Grid.Column="1" Margin="0, 0, 5, 0" VerticalAlignment="Center">Edit</Button>
+                <Border Grid.Column="2" Width="30" Height="30" Background="Gray"></Border>
+            </Grid>
+            
+            <Label>Model</Label>
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBox Text="{Binding Model}" Margin="0, 0, 5, 0" IsReadOnly="True" />
+                <Button Grid.Column="1">Edit</Button>
+            </Grid>
+            
+            <Button Margin="0, 10, 0, 0" IsEnabled="False">Add Destruction Data</Button>
+            
+            <Label Margin="0, 5, 0, 0">Putdown Sound</Label>
+            <Button Content="{Binding PutdownSound.EditorID}"></Button>
+            
+            <Label Margin="0, 5, 0, 0">Keywords</Label>
+            <ListBox Height="440"></ListBox>
+        </StackPanel>
+    </Grid>
+</Window>

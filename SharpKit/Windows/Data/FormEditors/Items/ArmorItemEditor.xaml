@@ -1,0 +1,187 @@
+<Window x:Class="SharpKit.Windows.Data.FormEditors.Items.ArmorItemEditor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:misc="clr-namespace:SharpKit.Controls.Data.Misc"
+        xmlns:converters="clr-namespace:SharpKit.Converters"
+        mc:Ignorable="d"
+        Title="ArmorItemEditor" SizeToContent="Height" Width="1200">
+    
+    <Window.Resources>
+        <converters:TranslatedStringConverter x:Key="TransStringConv" />
+    </Window.Resources>
+    
+    <Grid ColumnDefinitions="3*,*,2*,2*" RowDefinitions="*,Auto" Margin="10">
+        <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0, 0, 10, 0">
+            <Label Grid.Column="0" Grid.Row="0" HorizontalAlignment="Right">ID</Label>
+            <TextBox Grid.Column="1" Grid.Row="0" Text="{Binding LocalCopy.EditorID}" />
+            
+            <Label Grid.Column="0" Grid.Row="1" HorizontalAlignment="Right">Name</Label>
+            <TextBox Grid.Column="1" Grid.Row="1" Margin="0, 5, 0, 0" Text="{Binding LocalCopy.Name, Converter={StaticResource TransStringConv}}" />
+            
+            <Label Grid.Column="0" Grid.Row="2" HorizontalAlignment="Right">Value</Label>
+            <TextBox Grid.Column="1" Grid.Row="2" Margin="0, 5, 0, 0" Text="{Binding LocalCopy.Value}" />
+            
+            <Label Grid.Column="0" Grid.Row="3" HorizontalAlignment="Right">Enchanting</Label>
+            <ComboBox Grid.Column="1" Grid.Row="3" Margin="0, 5, 0, 0" SelectedItem="{Binding ObjectEffect}" ItemsSource="{Binding Enchantments.Value}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding EditorID}"></TextBlock>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            
+            <Label Grid.Column="0" Grid.Row="4" HorizontalAlignment="Right">Template Armor</Label>
+            <ComboBox Grid.Column="1" Grid.Row="4" Margin="0, 5, 0, 0" ItemsSource="{Binding Armors.Value}" SelectedItem="{Binding TemplateArmor}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding EditorID}"></TextBlock>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            
+            <Label Grid.Column="0" Grid.Row="5" HorizontalAlignment="Right">Weight</Label>
+            <Grid Grid.Column="1" Grid.Row="5" ColumnDefinitions="Auto,*" Margin="0, 5, 0, 0">
+                <TextBox MinWidth="60" Margin="0, 0, 5, 0" Text="{Binding LocalCopy.Weight}" />
+                <ComboBox Grid.Column="1" ItemsSource="{Binding ArmorTypes}" SelectedItem="{Binding LocalCopy.BodyTemplate.ArmorType}" />
+            </Grid>
+            
+            <Label Grid.Column="0" Grid.Row="6" HorizontalAlignment="Right">Armor Rating</Label>
+            <TextBox Grid.Column="1" Grid.Row="6" Margin="0, 5, 0, 0" Text="{Binding ArmorRating}" />
+            
+            <Label Grid.Column="0" Grid.Row="7" HorizontalAlignment="Right">Equip Type</Label>
+            <ComboBox Grid.Column="1" Grid.Row="7" ItemsSource="{Binding EquipTypes.Value}" SelectedItem="{Binding EquipType}" Margin="0, 5, 0, 0">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding EditorID}"></TextBlock>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            
+            <Label Grid.Column="0" Grid.Row="8" HorizontalAlignment="Right">Block Bash Impact Data Set</Label>
+            <ComboBox Grid.Column="1" Grid.Row="8" Margin="0, 5, 0, 0" ItemsSource="{Binding BashDatas.Value}" SelectedItem="{Binding BashImpactData}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding EditorID}"></TextBlock>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            
+            <Label Grid.Column="0" Grid.Row="9" HorizontalAlignment="Right">Alternate Block Material</Label>
+            <ComboBox Grid.Column="1" Grid.Row="9" Margin="0, 5, 0, 0" ItemsSource="{Binding BlockMaterials.Value}" SelectedItem="{Binding BlockMaterial}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding EditorID}"></TextBlock>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            
+            <Label Grid.Column="0" Grid.Row="10" HorizontalAlignment="Right">Pickup Sound</Label>
+            <Button Content="Select" Grid.Column="1" Grid.Row="10" Margin="0, 5, 0, 0" IsEnabled="False" />
+            
+            <Label Grid.Column="0" Grid.Row="11" HorizontalAlignment="Right">Putdown Sound</Label>
+            <Button Content="Select" Grid.Column="1" Grid.Row="11" Margin="0, 5, 0, 0" IsEnabled="False" />
+            
+            <StackPanel Orientation="Vertical" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="12" Margin="0, 10, 0, 0">
+                <Button IsEnabled="False">Add Destruction Data</Button>
+                
+                <Label Margin="0, 5, 0, 0">Ragdoll Constraint Template</Label>
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBox Margin="0, 0, 5, 0" Text="{Binding RagdollConstraintTemplate}" />
+                    <Button Grid.Column="1" IsEnabled="False">Edit</Button>
+                </Grid>
+                
+                <StackPanel Orientation="Horizontal" Margin="0, 5, 0, 0">
+                    <CheckBox VerticalAlignment="Center" IsChecked="{Binding IsPlayable}" />
+                    <Label>Playable</Label>
+                </StackPanel>
+                
+                <StackPanel Orientation="Horizontal" Margin="0, 5, 0, 0">
+                    <CheckBox VerticalAlignment="Center" IsEnabled="False" /> 
+                    <Label>Has Platform/Language Specific Textures</Label>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+        
+        <Grid Grid.Row="0" Grid.Column="1" ColumnDefinitions="*" RowDefinitions="Auto,*" Margin="0, 0, 10, 0">
+            <StackPanel Orientation="Vertical" Grid.Row="0">
+                <Label>Race</Label>
+                <ComboBox ItemsSource="{Binding Races.Value}" SelectedItem="{Binding Race}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding EditorID}"></TextBlock>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+            
+            <GroupBox Grid.Row="1" Header="Biped Object" Margin="0, 5, 0, 0">
+                <misc:BipedFlagsEditor Flags="{Binding BipedFlags, Mode=TwoWay}" />
+            </GroupBox>
+        </Grid>
+        
+        <Grid Grid.Row="0" Grid.Column="2" ColumnDefinitions="*" RowDefinitions="Auto,Auto,Auto,*" Margin="0, 0, 10, 0">
+            <GroupBox Grid.Row="0" Header="Male">
+                <StackPanel Orientation="Vertical" Margin="0, 5, 0, 0">
+                    <Label>World Model</Label>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Margin="0, 0, 5, 0" />
+                        <Button Grid.Column="1">Edit</Button>
+                    </Grid>
+                    
+                    <Label>Icon Image</Label>
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBox Margin="0, 0, 5, 0" Grid.Column="0" VerticalAlignment="Center" IsReadOnly="True" />
+                        <Button Grid.Column="1" Margin="0, 0, 5, 0" VerticalAlignment="Center">Edit</Button>
+                        <Border Grid.Column="2" Width="30" Height="30" Background="Gray"></Border>
+                    </Grid>
+            
+                    <Label>Message Icon</Label>
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBox  Margin="0, 0, 5, 0" Grid.Column="0" VerticalAlignment="Center" IsReadOnly="True" />
+                        <Button Grid.Column="1" Margin="0, 0, 5, 0" VerticalAlignment="Center">Edit</Button>
+                        <Border Grid.Column="2" Width="30" Height="30" Background="Gray"></Border>
+                    </Grid>
+                </StackPanel>    
+            </GroupBox>
+            
+            <GroupBox Grid.Row="1" Header="Female">
+                <StackPanel Orientation="Vertical" Margin="0, 5, 0, 0">
+                    <Label>World Model</Label>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Margin="0, 0, 5, 0" />
+                        <Button Grid.Column="1">Edit</Button>
+                    </Grid>
+                    
+                    <Label>Icon Image</Label>
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBox Margin="0, 0, 5, 0" Grid.Column="0" VerticalAlignment="Center" IsReadOnly="True" />
+                        <Button Grid.Column="1" Margin="0, 0, 5, 0" VerticalAlignment="Center">Edit</Button>
+                        <Border Grid.Column="2" Width="30" Height="30" Background="Gray"></Border>
+                    </Grid>
+            
+                    <Label>Message Icon</Label>
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBox  Margin="0, 0, 5, 0" Grid.Column="0" VerticalAlignment="Center" IsReadOnly="True" />
+                        <Button Grid.Column="1" Margin="0, 0, 5, 0" VerticalAlignment="Center">Edit</Button>
+                        <Border Grid.Column="2" Width="30" Height="30" Background="Gray"></Border>
+                    </Grid>
+                </StackPanel>
+            </GroupBox>
+            
+            <Label Grid.Row="2">Models</Label>
+            <ListBox Grid.Row="3"></ListBox>
+        </Grid>
+        
+        <Grid Grid.Column="3" RowDefinitions="Auto,*,Auto,*,*">
+            <Label Grid.Row="0">Description</Label>
+            <TextBox Grid.Row="1" Margin="0, 5, 0, 0" />
+            
+            <Label Grid.Row="2" Margin="0, 5, 0, 0">Keywords</Label>
+            <ListBox Grid.Row="3"></ListBox>
+            
+            <misc:PapyrusScriptList Grid.Row="4" Margin="0, 5, 0, 0" />
+        </Grid>
+    </Grid>
+</Window>

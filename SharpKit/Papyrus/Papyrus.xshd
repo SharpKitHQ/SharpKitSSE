@@ -1,0 +1,85 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="Papyrus"
+                  extensions=".psc"
+                  xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+    <Color name="Comment" foreground="#008000" />
+    <Color name="String" foreground="#A31515" />
+    <Color name="Keyword" foreground="#0000FF" fontWeight="bold" />
+    <Color name="Type" foreground="#267F99" />
+    <Color name="Number" foreground="#098658" />
+    <Color name="Literal" foreground="#0000FF" />
+    <Color name="Method" foreground="#795E26" />
+
+    <RuleSet ignoreCase="true">
+
+        <!-- Comments -->
+        <Span color="Comment" begin=";" />
+        <Span color="Comment" begin="\{" end="\}" />
+
+        <!-- Strings -->
+        <Span color="String" begin="&quot;" end="&quot;" />
+
+        <!-- Numbers -->
+        <Rule color="Number">\b\d+(\.\d+)?\b</Rule>
+
+        <!-- Papyrus keywords -->
+        <Keywords color="Keyword">
+            <Word>Scriptname</Word>
+            <Word>Extends</Word>
+            <Word>Import</Word>
+            <Word>As</Word>
+
+            <Word>Event</Word>
+            <Word>EndEvent</Word>
+            <Word>Function</Word>
+            <Word>EndFunction</Word>
+            <Word>Return</Word>
+            <Word>Global</Word>
+            <Word>Native</Word>
+
+            <Word>Property</Word>
+            <Word>EndProperty</Word>
+            <Word>Auto</Word>
+            <Word>AutoReadOnly</Word>
+            <Word>Conditional</Word>
+            <Word>Const</Word>
+
+            <Word>If</Word>
+            <Word>ElseIf</Word>
+            <Word>Else</Word>
+            <Word>EndIf</Word>
+            <Word>While</Word>
+            <Word>EndWhile</Word>
+
+            <Word>State</Word>
+            <Word>EndState</Word>
+            <Word>Default</Word>
+
+            <Word>Return</Word>
+            <Word>New</Word>
+            <Word>Parent</Word>
+            <Word>Self</Word>
+        </Keywords>
+
+        <!-- Common built-in types -->
+        <Keywords color="Type">
+            <Word>Int</Word>
+            <Word>Float</Word>
+            <Word>Bool</Word>
+            <Word>String</Word>
+            <Word>Var</Word>
+        </Keywords>
+
+        <!-- Built-in literals -->
+        <Keywords color="Literal">
+            <Word>True</Word>
+            <Word>False</Word>
+            <Word>None</Word>
+        </Keywords>
+
+        <!-- Simple method-call highlighting -->
+        <Rule color="Method">\b[A-Za-z_]\w*(?=\s*\()</Rule>
+
+    </RuleSet>
+</SyntaxDefinition>

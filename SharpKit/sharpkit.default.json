@@ -1,0 +1,11 @@
+{
+  "$schema": "https://www.schemastore.org/appsettings.json",
+  "Serilog": {
+    "Using": [ "Serilog.Sinks.Console" ],
+    "MinimumLevel": "Debug",
+    "WriteTo": [
+      { "Name":  "Console" }
+    ],
+    "Enrich": [ "FromLogContext", "WithThreadId" ]
+  }
+}

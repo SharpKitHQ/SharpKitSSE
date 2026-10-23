@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharpKit", "SharpKit\SharpKit.csproj", "{1C839357-4D2F-45A4-B205-1203D3AC73FC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharpKit.Renderer", "SharpKit.Renderer\SharpKit.Renderer.csproj", "{4A36A202-0AAF-48FF-A0AD-03BFE1931E48}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1C839357-4D2F-45A4-B205-1203D3AC73FC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1C839357-4D2F-45A4-B205-1203D3AC73FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1C839357-4D2F-45A4-B205-1203D3AC73FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1C839357-4D2F-45A4-B205-1203D3AC73FC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4A36A202-0AAF-48FF-A0AD-03BFE1931E48}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A36A202-0AAF-48FF-A0AD-03BFE1931E48}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A36A202-0AAF-48FF-A0AD-03BFE1931E48}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A36A202-0AAF-48FF-A0AD-03BFE1931E48}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

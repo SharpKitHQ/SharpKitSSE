@@ -1,0 +1,17 @@
+<Window x:Class="SharpKit.Splash"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:local="clr-namespace:SharpKit"
+        mc:Ignorable="d"
+        Title="Splash" Height="200" Width="300"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        WindowStartupLocation="CenterScreen">
+    <StackPanel Orientation="Vertical" VerticalAlignment="Center">
+        <Label FontSize="30" FontWeight="Bold">SharpKit v1.0.0</Label>
+        <Label>Loading, please wait...</Label>
+    </StackPanel>
+</Window>

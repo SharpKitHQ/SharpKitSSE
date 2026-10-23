@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net11.0-windows</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <UseWPF>true</UseWPF>
+        <UseWindowsForms>true</UseWindowsForms>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+      <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+      <PackageReference Include="DevZest.WpfDocking" Version="3.0.0" />
+      <PackageReference Include="FuzzySharp" Version="2.0.2" />
+      <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.13" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.13" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
+      <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
+      <PackageReference Include="Mutagen.Bethesda" Version="0.54.4" />
+      <PackageReference Include="Ookii.Dialogs.Wpf" Version="5.0.1" />
+      <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+      <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1" />
+      <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Remove="Resources\**\*" />
+        <Resource Include="Resources\**\*" />
+        <None Remove="Syntax\Papyrus.xshd" />
+        <Resource Include="Papyrus\Papyrus.xshd" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\SharpKit.Renderer\SharpKit.Renderer.csproj" />
+    </ItemGroup>
+
+</Project>
