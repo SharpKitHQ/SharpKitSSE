@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using DrawingColor = System.Drawing.Color;
 using Microsoft.Extensions.Logging;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Archives;
@@ -62,6 +63,9 @@ public sealed class TriangleRenderer : IDisposable
     private float _cameraDistance = 5f;
     private Vector3 _cameraTarget = Vector3.Zero;
     private float _modelRadius = 1f;
+    private Vector3 _lightDirection = Vector3.Normalize(new Vector3(-0.4f, 0.7f, 1f));
+    private Vector3 _ambientLightColor = new(0.25f);
+    private Vector3 _directionalLightColor = new(1f, 0.95f, 0.9f);
 
     // private readonly List<(Vector3 A, Vector3 B, Vector3 C)> _modelTriangles = new();
 
@@ -85,13 +89,15 @@ public sealed class TriangleRenderer : IDisposable
         }
     }
 
-    // Must match the HLSL constant-buffer layout (80 bytes).
+    // Must match the HLSL constant-buffer layout (128 bytes).
     [StructLayout(LayoutKind.Sequential)]
     private struct SceneConstants
     {
         public Matrix4x4 WorldViewProjection;
         public Vector4 LightDirection;
         public Vector4 CameraPosition;
+        public Vector4 AmbientLightColor;
+        public Vector4 DirectionalLightColor;
     }
 
     public TriangleRenderer(ILogger<TriangleRenderer> log)
@@ -257,6 +263,7 @@ public sealed class TriangleRenderer : IDisposable
     {
         _dataFolderPath = env.DataFolderPath;
         _log.LogInformation("Loading cell {Name}", cell.Name?.String);
+        ApplyCellLighting(cell, env);
 
         var allGetters = cell.Temporary.Concat(cell.Persistent);
         
@@ -890,12 +897,64 @@ public sealed class TriangleRenderer : IDisposable
         var constants = new SceneConstants
         {
             WorldViewProjection = worldViewProjection,
-            LightDirection = new Vector4(Vector3.Normalize(new Vector3(-0.4f, 0.7f, 1f)), 0f),
-            CameraPosition = new Vector4(cameraPosition, 1f)
+            LightDirection = new Vector4(_lightDirection, 0f),
+            CameraPosition = new Vector4(cameraPosition, 1f),
+            AmbientLightColor = new Vector4(_ambientLightColor, 1f),
+            DirectionalLightColor = new Vector4(_directionalLightColor, 1f)
         };
 
         _context!.UpdateSubresource(in constants, _sceneBuffer!);
     }
+
+    private void ApplyCellLighting(ICellGetter cell, IGameEnvironment env)
+    {
+        var lighting = cell.Lighting;
+        ILightingTemplateGetter? template = null;
+        if (cell.LightingTemplate.TryResolve(env.LinkCache, out var resolvedTemplate))
+            template = resolvedTemplate;
+
+        if (lighting is null && template is null)
+            return;
+
+        bool inheritAmbient = lighting is null ||
+            (lighting.Inherits & CellLighting.Inherit.AmbientColor) != 0;
+        bool inheritDirectionalColor = lighting is null ||
+            (lighting.Inherits & CellLighting.Inherit.DirectionalColor) != 0;
+        bool inheritDirection = lighting is null ||
+            (lighting.Inherits & CellLighting.Inherit.DirectionalRotation) != 0;
+
+        DrawingColor ambientColor = inheritAmbient && template is not null
+            ? template.AmbientColor
+            : lighting?.AmbientColor ?? template?.AmbientColor ?? DrawingColor.FromArgb(64, 64, 64);
+        DrawingColor directionalColor = inheritDirectionalColor && template is not null
+            ? template.DirectionalColor
+            : lighting?.DirectionalColor ?? template?.DirectionalColor ?? DrawingColor.White;
+
+        int directionXY = inheritDirection && template is not null
+            ? template.DirectionalRotationXY
+            : lighting?.DirectionalRotationXY ?? template?.DirectionalRotationXY ?? 0;
+        int directionZ = inheritDirection && template is not null
+            ? template.DirectionalRotationZ
+            : lighting?.DirectionalRotationZ ?? template?.DirectionalRotationZ ?? 0;
+
+        _ambientLightColor = ToRgb(ambientColor);
+        _directionalLightColor = ToRgb(directionalColor);
+
+        // The directional rotations are azimuth and elevation in degrees.
+        float azimuth = directionXY * (MathF.PI / 180f);
+        float elevation = directionZ * (MathF.PI / 180f);
+        _lightDirection = Vector3.Normalize(new Vector3(
+            MathF.Cos(azimuth) * MathF.Cos(elevation),
+            MathF.Sin(azimuth) * MathF.Cos(elevation),
+            MathF.Sin(elevation)));
+
+        _log.LogDebug(
+            "Cell lighting: ambient={Ambient}, directional={Directional}, rotation=({RotationXY}, {RotationZ})",
+            _ambientLightColor, _directionalLightColor, directionXY, directionZ);
+    }
+
+    private static Vector3 ToRgb(DrawingColor color) =>
+        new(color.R / 255f, color.G / 255f, color.B / 255f);
 
     private void CreateRenderTargets(uint width, uint height)
     {

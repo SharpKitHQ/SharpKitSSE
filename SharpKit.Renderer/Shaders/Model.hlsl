@@ -3,6 +3,8 @@ cbuffer SceneConstants : register(b0)
     row_major float4x4 WorldViewProjection;
     float4 LightDirection;
     float4 CameraPosition;
+    float4 AmbientLightColor;
+    float4 DirectionalLightColor;
 };
 
 Texture2D DiffuseTexture : register(t0);
@@ -43,8 +45,8 @@ float4 PSMain(VSOutput input) : SV_TARGET
 
     // Simple diffuse lighting
     float diff = max(dot(n, l), 0.0f);
-    float3 ambient = float3(0.25f, 0.25f, 0.25f);
-    float3 lightColor = float3(1.0f, 0.95f, 0.9f) * diff;
+    float3 ambient = AmbientLightColor.rgb;
+    float3 lightColor = DirectionalLightColor.rgb * diff;
     float3 lighting = ambient + lightColor;
 
     // Sample the diffuse texture (falls back to white if no texture bound)
