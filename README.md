@@ -1,7 +1,7 @@
 [![Matrix](https://img.shields.io/matrix/sharpkitsse-dev%3Amatrix.org)](https://matrix.to/#/#sharpkitsse-dev:matrix.org)
 [![GitHub Issues](https://img.shields.io/github/issues/SharpKitHQ/SharpKitSSE)](https://github.com/SharpKitHQ/SharpKitSSE/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/SharpKitHQ/SharpKitSSE)](https://github.com/SharpKitHQ/SharpKitSSE/pulls)
-![Download On NexusMods](https://img.shields.io/badge/Download%20On-NexusMods-orange)
+[![Download On NexusMods](https://img.shields.io/badge/Download%20On-NexusMods-orange)](https://www.nexusmods.com/skyrimspecialedition/mods/196677)
 [![Latest Release](https://img.shields.io/github/v/release/SharpKitHQ/SharpKitSSE)](https://github.com/SharpKitHQ/SharpKitSSE/releases)
 
 # SharpKit
