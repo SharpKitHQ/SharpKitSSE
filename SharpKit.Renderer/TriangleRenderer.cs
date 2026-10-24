@@ -155,6 +155,8 @@ public sealed class TriangleRenderer : IDisposable
         public Vector3 Position;
         public Vector3 BoundsMin;
         public Vector3 BoundsMax;
+        public Vector3 LocalBoundsMin;
+        public Vector3 LocalBoundsMax;
         public Vector3 Rotation;
         public float Scale;
         public Matrix4x4 NifTransform;
@@ -570,6 +572,8 @@ public sealed class TriangleRenderer : IDisposable
                 Position = position,
                 BoundsMin = new Vector3(float.PositiveInfinity),
                 BoundsMax = new Vector3(float.NegativeInfinity),
+                LocalBoundsMin = new Vector3(float.PositiveInfinity),
+                LocalBoundsMax = new Vector3(float.NegativeInfinity),
                 Rotation = rotation,
                 Scale = scale,
                 NifTransform = nifTransforms.GetValueOrDefault(
@@ -736,6 +740,12 @@ public sealed class TriangleRenderer : IDisposable
                 obj.BoundsMax = Vector3.Max(obj.BoundsMax, TransformPoint(obj, a));
                 obj.BoundsMax = Vector3.Max(obj.BoundsMax, TransformPoint(obj, b));
                 obj.BoundsMax = Vector3.Max(obj.BoundsMax, TransformPoint(obj, c));
+                obj.LocalBoundsMin = Vector3.Min(obj.LocalBoundsMin, Vector3.Transform(a, obj.NifTransform) * obj.Scale);
+                obj.LocalBoundsMin = Vector3.Min(obj.LocalBoundsMin, Vector3.Transform(b, obj.NifTransform) * obj.Scale);
+                obj.LocalBoundsMin = Vector3.Min(obj.LocalBoundsMin, Vector3.Transform(c, obj.NifTransform) * obj.Scale);
+                obj.LocalBoundsMax = Vector3.Max(obj.LocalBoundsMax, Vector3.Transform(a, obj.NifTransform) * obj.Scale);
+                obj.LocalBoundsMax = Vector3.Max(obj.LocalBoundsMax, Vector3.Transform(b, obj.NifTransform) * obj.Scale);
+                obj.LocalBoundsMax = Vector3.Max(obj.LocalBoundsMax, Vector3.Transform(c, obj.NifTransform) * obj.Scale);
             }
 
             if (obj.ModelTris.Count > 0)
@@ -1304,23 +1314,33 @@ public sealed class TriangleRenderer : IDisposable
         if (_selectedObjectId is not Guid selectedId)
             return;
 
-        Vector3 min = new(float.PositiveInfinity);
-        Vector3 max = new(float.NegativeInfinity);
-        foreach (var obj in _sceneObjects.Where(obj => obj.Id == selectedId))
+        var selectedObjects = _sceneObjects.Where(obj => obj.Id == selectedId).ToArray();
+        if (selectedObjects.Length == 0)
+            return;
+
+        var first = selectedObjects[0];
+        Vector3 min = first.LocalBoundsMin;
+        Vector3 max = first.LocalBoundsMax;
+        foreach (var obj in selectedObjects.Skip(1))
         {
-            min = Vector3.Min(min, obj.BoundsMin);
-            max = Vector3.Max(max, obj.BoundsMax);
+            min = Vector3.Min(min, obj.LocalBoundsMin);
+            max = Vector3.Max(max, obj.LocalBoundsMax);
         }
         if (!IsFinite(min) || !IsFinite(max))
             return;
 
-        Vector3[] corners =
+        Vector3[] localCorners =
         [
             new(min.X, min.Y, min.Z), new(max.X, min.Y, min.Z),
             new(max.X, max.Y, min.Z), new(min.X, max.Y, min.Z),
             new(min.X, min.Y, max.Z), new(max.X, min.Y, max.Z),
             new(max.X, max.Y, max.Z), new(min.X, max.Y, max.Z)
         ];
+        Matrix4x4 rotation =
+            Matrix4x4.CreateRotationZ(-first.Rotation.Z) *
+            Matrix4x4.CreateRotationY(-first.Rotation.Y) *
+            Matrix4x4.CreateRotationX(-first.Rotation.X);
+        Vector3[] corners = localCorners.Select(corner => Vector3.Transform(corner, rotation) + first.Position).ToArray();
         int[] edges = [0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4, 0, 4, 1, 5, 2, 6, 3, 7];
         Vector4 tint = new(1f, 0.75f, 0.05f, 1f);
         Vector4 emissive = new(1f, 0.65f, 0f, 4f);
