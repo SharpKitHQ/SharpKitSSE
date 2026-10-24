@@ -128,22 +128,23 @@ public sealed class TriangleRenderer : IDisposable
     private readonly record struct PlacedPointLight(
         Vector3 Position, Vector3 Color, float Radius, float FalloffExponent);
 
-    public TriangleRenderer(ILogger<TriangleRenderer> log)
+    public TriangleRenderer(ILogger<TriangleRenderer> log, string dataDirPath)
     {
         _log = log;
         _bsaFileProvider = new(_log);
         
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Meshes0.bsa"));
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Meshes1.bsa"));
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Textures0.bsa"));
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Textures1.bsa"));
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Textures2.bsa"));
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Textures3.bsa"));
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Textures4.bsa"));
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Textures5.bsa"));
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Textures6.bsa"));
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Textures7.bsa"));
-        _bsaFileProvider.OpenArchive(Path.Combine(@"G:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data", "Skyrim - Textures8.bsa"));
+        
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Meshes0.bsa"));
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Meshes1.bsa"));
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Textures0.bsa"));
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Textures1.bsa"));
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Textures2.bsa"));
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Textures3.bsa"));
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Textures4.bsa"));
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Textures5.bsa"));
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Textures6.bsa"));
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Textures7.bsa"));
+        _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Textures8.bsa"));
     }
 
     private struct SceneObject
