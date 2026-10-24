@@ -13,7 +13,7 @@ public partial class CellEditor : Window
 {
     private readonly PluginFileManager _pfm;
     private readonly Dx11Panel _panel;
-    private readonly TriangleRenderer _renderer;
+    private readonly MainRenderer _renderer;
     private bool _initialized;
     
     public CellEditor(PluginFileManager pfm)
@@ -23,7 +23,7 @@ public partial class CellEditor : Window
 
         var dirPath = _pfm.GetEnv().DataFolderPath;
 
-        _renderer = new(App.ServiceProvider!.GetRequiredService<ILogger<TriangleRenderer>>(), dirPath);
+        _renderer = new(App.ServiceProvider!.GetRequiredService<ILogger<MainRenderer>>(), dirPath);
         
         _panel = new(_renderer);
         _panel.Dock = DockStyle.Fill;

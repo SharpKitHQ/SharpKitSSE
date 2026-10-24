@@ -4,14 +4,14 @@ namespace SharpKit.Controls;
 
 public sealed class Dx11Panel : Panel
 {
-    private readonly TriangleRenderer _renderer;
+    private readonly MainRenderer _renderer;
     private Point _lastMousePosition;
     private bool _orbiting;
     private bool _panning;
     private bool _mouseDragged;
     private bool _selectOnMouseUp;
     
-    public Dx11Panel(TriangleRenderer renderer)
+    public Dx11Panel(MainRenderer renderer)
     {
         _renderer = renderer;
         BackColor = System.Drawing.Color.Black;

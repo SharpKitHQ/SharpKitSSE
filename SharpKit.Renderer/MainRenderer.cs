@@ -3,7 +3,6 @@ using System.Runtime.InteropServices;
 using DrawingColor = System.Drawing.Color;
 using Microsoft.Extensions.Logging;
 using Mutagen.Bethesda;
-using Mutagen.Bethesda.Archives;
 using Mutagen.Bethesda.Environments;
 using Mutagen.Bethesda.Skyrim;
 using NiflySharp;
@@ -19,9 +18,9 @@ using Color4 = Vortice.Mathematics.Color4;
 
 namespace SharpKit.Renderer;
 
-public sealed class TriangleRenderer : IDisposable
+public sealed class MainRenderer : IDisposable
 {
-    private readonly ILogger<TriangleRenderer> _log;
+    private readonly ILogger<MainRenderer> _log;
     private readonly CachedBSAFileProvider _bsaFileProvider;
 
     private ID3D11Device? _device;
@@ -128,7 +127,7 @@ public sealed class TriangleRenderer : IDisposable
     private readonly record struct PlacedPointLight(
         Vector3 Position, Vector3 Color, float Radius, float FalloffExponent);
 
-    public TriangleRenderer(ILogger<TriangleRenderer> log, string dataDirPath)
+    public MainRenderer(ILogger<MainRenderer> log, string dataDirPath)
     {
         _log = log;
         _bsaFileProvider = new(_log);

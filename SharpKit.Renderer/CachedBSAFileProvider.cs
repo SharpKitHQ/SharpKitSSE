@@ -4,7 +4,7 @@ using Mutagen.Bethesda.Archives;
 
 namespace SharpKit.Renderer;
 
-public class CachedBSAFileProvider(ILogger<TriangleRenderer> _log, long maxCacheBytes = 2L * 1024 * 1024 * 1024)
+public class CachedBSAFileProvider(ILogger<MainRenderer> _log, long maxCacheBytes = 2L * 1024 * 1024 * 1024)
 {
     private readonly Dictionary<string, IArchiveReader> _readerCache = [];
     private readonly object _sync = new();
