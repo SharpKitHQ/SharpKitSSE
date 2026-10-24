@@ -61,7 +61,7 @@ public partial class CellExplorer : Window
 
     private void CellList_KeyUp(object sender, KeyEventArgs e)
     {
-        var letter = e.Key.ToString().ToLowerOrdinal();
+        var letter = e.Key.ToString().ToLowerInvariant();
 
         if (letter.Length != 1 || letter[0] < 'a' || letter[0] > 'z')
             return;

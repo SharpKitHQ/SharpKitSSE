@@ -1,8 +1,5 @@
-﻿using System.Numerics;
-using System.Windows;
-using System.Windows.Input;
+﻿using System.Windows;
 using CommunityToolkit.Mvvm.Input;
-using DevZest.Windows.Docking;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using SharpKit.Data;

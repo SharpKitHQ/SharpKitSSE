@@ -5,7 +5,6 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:SharpKit"
         xmlns:windows="clr-namespace:SharpKit.Windows"
-        xmlns:docking="http://schemas.devzest.com/presentation/docking"
         mc:Ignorable="d"
         WindowState="Maximized"
         Title="{Binding Title}" Height="450" Width="800">
