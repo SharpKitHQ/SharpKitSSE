@@ -51,6 +51,31 @@ public partial class DataFileSelectorWindow : Window
         };
     }
 
+    public bool LoadByName(string pluginName)
+    {
+        var item = _pfm.GetPluginList()
+            .Select(p => new DataFileSelectorWindowVM.ModItem
+            {
+                Filename = p.Key,
+                CreatedBy = p.Mod?.ModHeader.Author ?? "",
+                Summary = p.Mod?.ModHeader.Description ?? "",
+                ParentMasters = new ObservableCollection<string>(p.Mod?.ModHeader.MasterReferences
+                    .Select(m => m.Master.FileName.String).ToList() ?? []),
+                CreatedOn = DateTime.MinValue,
+                LastModified = DateTime.MinValue,
+                IsMaster = p.Mod?.ModHeader.Flags.HasFlag(SkyrimModHeader.HeaderFlag.Master) ?? false,
+                LoadOrder = p.Order
+            })
+            .OrderBy(p => p.LoadOrder)
+            .FirstOrDefault(p => p.Filename.Equals(pluginName, StringComparison.OrdinalIgnoreCase));
+
+        var result = false;
+        if(item is not null)
+            result = LoadNoProgress(item, null);
+        
+        return result;
+    }
+
     private void DoSearch()
     {
         var query = _vm.SearchString.Trim();
@@ -96,6 +121,72 @@ public partial class DataFileSelectorWindow : Window
 
         _vm.ActiveItem = plugin;
     }
+
+    private bool LoadNoProgress(DataFileSelectorWindowVM.ModItem? item, string? newFilename)
+    {
+        var masters = _vm.FilteredPlugins
+            .Where(p => p is { Selected: true, IsMaster: true })
+            .Select(p => p.Filename)
+            .ToList();
+
+        if (item is not null)
+            _pfm.LoadMod(item.Filename, masters);
+        else
+            _pfm.CreateMod(newFilename!, masters);
+
+        return true;
+    }
+
+    private void LoadWithProgress(DataFileSelectorWindowVM.ModItem? item, string? newFilename)
+    {
+        var masters = _vm.FilteredPlugins
+            .Where(p => p is { Selected: true, IsMaster: true })
+            .Select(p => p.Filename)
+            .ToList();
+
+        var progress = new ProgressDialog
+        {
+            WindowTitle = "Loading Plugin",
+            Text = "Please wait...",
+            Description = "Parsing plugin data",
+            ShowTimeRemaining = false,
+            ProgressBarStyle = ProgressBarStyle.MarqueeProgressBar
+        };
+        
+        progress.DoWork += (_, args) =>
+        {
+            if (item is not null)
+            {
+                _pfm.LoadMod(item.Filename, masters, progress);
+            }
+            else
+            {
+                _pfm.CreateMod(newFilename!, masters, progress);
+            }
+        };
+
+        progress.RunWorkerCompleted += (_, args) =>
+        {
+            progress.Dispose();
+
+            if (args.Error is not null)
+            {
+                MessageBox.Show(
+                    this,
+                    $"Failed to parse plugin:\n{args.Error.GetBaseException().Message}",
+                    "Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+
+                return;
+            }
+
+            DialogResult = true;
+            Close();
+        };
+
+        progress.ShowDialog(this);
+    }
     
     private void Ok_OnClick(object sender, RoutedEventArgs e)
     {
@@ -126,57 +217,7 @@ public partial class DataFileSelectorWindow : Window
                 newFilename += ".esp";
         }
 
-        var masters = _vm.FilteredPlugins
-            .Where(p => p is { Selected: true, IsMaster: true })
-            .Select(p => p.Filename)
-            .ToList();
-
-        var progress = new ProgressDialog
-        {
-            WindowTitle = "Loading Plugin",
-            Text = "Please wait...",
-            Description = "Parsing plugin data",
-            ShowTimeRemaining = false,
-            ProgressBarStyle = ProgressBarStyle.MarqueeProgressBar
-        };
-        
-        progress.DoWork += (_, args) =>
-        {
-            if (activeItem is not null)
-            {
-                _pfm.LoadMod(activeItem.Filename, masters, progress);
-            }
-            else
-            {
-                _pfm.CreateMod(newFilename!, masters, progress);
-            }
-        };
-
-        progress.RunWorkerCompleted += (_, args) =>
-        {
-            progress.Dispose();
-
-            if (args.Error is not null)
-            {
-                MessageBox.Show(
-                    this,
-                    $"Failed to parse plugin:\n{args.Error.GetBaseException().Message}",
-                    "Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
-
-                return;
-            }
-
-            Log.Information("Found {N} cell blocks", PluginFileManager.Cells.Value?.Count);
-            var cellBlocks = PluginFileManager.Cells.Value;
-            
-            
-            DialogResult = true;
-            Close();
-        };
-
-        progress.ShowDialog(this);
+        LoadWithProgress(activeItem, newFilename);
     }
 
     private void Cancel_OnClick(object sender, RoutedEventArgs e)

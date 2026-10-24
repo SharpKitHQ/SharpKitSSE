@@ -8,6 +8,8 @@ public sealed class Dx11Panel : Panel
     private Point _lastMousePosition;
     private bool _orbiting;
     private bool _panning;
+    private bool _mouseDragged;
+    private bool _selectOnMouseUp;
     
     public Dx11Panel(TriangleRenderer renderer)
     {
@@ -21,8 +23,10 @@ public sealed class Dx11Panel : Panel
         base.OnMouseDown(e);
 
         _lastMousePosition = e.Location;
+        _mouseDragged = false;
+        _selectOnMouseUp = e.Button == MouseButtons.Left && (ModifierKeys & Keys.Alt) != Keys.Alt;
 
-        if (e.Button == MouseButtons.Left)
+        if (e.Button == MouseButtons.Left && (ModifierKeys & Keys.Alt) == Keys.Alt)
             _orbiting = true;
         else if (e.Button == MouseButtons.Middle)
             _panning = true;
@@ -40,6 +44,8 @@ public sealed class Dx11Panel : Panel
 
         float dx = e.X - _lastMousePosition.X;
         float dy = e.Y - _lastMousePosition.Y;
+        if (dx * dx + dy * dy > 9f)
+            _mouseDragged = true;
 
         _lastMousePosition = e.Location;
 
@@ -54,7 +60,11 @@ public sealed class Dx11Panel : Panel
         base.OnMouseUp(e);
 
         if (e.Button == MouseButtons.Left)
+        {
             _orbiting = false;
+            if (!_mouseDragged && _selectOnMouseUp)
+                _renderer.SelectObjectAt(e.X, e.Y, ClientSize.Width, ClientSize.Height);
+        }
         else if (e.Button == MouseButtons.Middle)
             _panning = false;
 

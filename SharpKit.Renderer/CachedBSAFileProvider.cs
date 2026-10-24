@@ -45,6 +45,30 @@ public class CachedBSAFileProvider(ILogger<TriangleRenderer> _log, long maxCache
         return null;
     }
 
+    public Stream? GetFileFromAnyByFileName(string fileName)
+    {
+        string requestedName = Path.GetFileName(NormalizePath(fileName));
+        if (string.IsNullOrWhiteSpace(requestedName))
+            return null;
+
+        foreach (var (archivePath, reader) in _readerCache)
+        {
+            var archiveFile = reader.Files.FirstOrDefault(file =>
+                Path.GetFileName(NormalizePath(file.Path)).Equals(
+                    requestedName, StringComparison.OrdinalIgnoreCase));
+            if (archiveFile is null)
+                continue;
+
+            string actualPath = NormalizePath(archiveFile.Path);
+            _log.LogDebug(
+                "Resolved archive filename {FileName} to {ArchivePath} in {Archive}",
+                requestedName, actualPath, archivePath);
+            return CacheAndReturnStream(archiveFile.AsStream(), actualPath);
+        }
+
+        return null;
+    }
+
     public Stream? GetFileFromArchive(string relativePath, string archivePath)
     {
         if (!_readerCache.TryGetValue(archivePath, out var reader))

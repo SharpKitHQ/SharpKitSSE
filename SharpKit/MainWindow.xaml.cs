@@ -4,6 +4,8 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using DevZest.Windows.Docking;
 using Microsoft.Extensions.DependencyInjection;
+using Serilog;
+using SharpKit.Data;
 using SharpKit.Reflection;
 using SharpKit.Util;
 using SharpKit.Windows;
@@ -17,14 +19,16 @@ namespace SharpKit;
 public partial class MainWindow : Window
 {
     private readonly IServiceProvider _sp;
+    private readonly ArgContainer _args;
     private readonly MainWindowVM _vm;
     private readonly PluginFileManager _pfm;
     private readonly EditorProvider _edp;
     private readonly WindowPosConfigManager _wpcm;
 
-    public MainWindow(IServiceProvider sp, MainWindowVM vm, PluginFileManager pfm, EditorProvider edp, WindowPosConfigManager wpcm)
+    public MainWindow(IServiceProvider sp, ArgContainer args, MainWindowVM vm, PluginFileManager pfm, EditorProvider edp, WindowPosConfigManager wpcm)
     {
         _sp = sp;
+        _args = args;
         _vm = vm;
         _pfm = pfm;
         _edp = edp;
@@ -32,7 +36,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         DataContext = _vm;
-
+        
         _vm.OpenDataWindow = new RelayCommand(() =>
         {
             var dialog = _sp.GetRequiredService<DataFileSelectorWindow>();
@@ -44,6 +48,24 @@ public partial class MainWindow : Window
                 OnPluginLoad();
             }
         });
+    }
+
+    protected override void OnInitialized(EventArgs e)
+    {
+        base.OnInitialized(e);
+        
+        if (!string.IsNullOrEmpty(_args.LoadPluginName))
+        {
+            var dialog = _sp.GetRequiredService<DataFileSelectorWindow>();
+            if (dialog.LoadByName(_args.LoadPluginName))
+            {
+                OnPluginLoad();
+            }
+            else
+            {
+                Log.Error("Something fucked");
+            }
+        }
     }
 
     private void File_Data_OnClick(object sender, RoutedEventArgs e)
@@ -67,18 +89,14 @@ public partial class MainWindow : Window
         };
         formExplorer.Show();
 
-        var cellExplorer = new CellExplorer(_wpcm)
-        {
-            Owner = this,
-            ShowInTaskbar = false
-        };
+        var cellExplorer = _sp.GetRequiredService<CellExplorer>();
+        cellExplorer.Owner = this;
+        cellExplorer.ShowInTaskbar = false;
         cellExplorer.Show();
-        
-        var cellEditor = new CellEditor()
-        {
-            Owner = this,
-            ShowInTaskbar = false
-        };
+
+        var cellEditor = _sp.GetRequiredService<CellEditor>();
+        cellEditor.Owner = this;
+        cellEditor.ShowInTaskbar = false;
         cellEditor.Show();
         
         formExplorer.Left = ((Width / 3) * 2) - 10;

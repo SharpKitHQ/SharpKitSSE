@@ -3,11 +3,13 @@ using System.Data;
 using System.IO;
 using System.Windows;
 using System.Windows.Forms;
+using ArgsParser;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using SharpKit.Data;
 using Application = System.Windows.Application;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 using MessageBox = System.Windows.MessageBox;
@@ -31,6 +33,23 @@ public partial class App : Application
         {
             var splash = new Splash();
             splash.Show();
+
+            var parser = new Parser(e.Args)
+                .SupportsOption<string?>("plugin", "Directly load a plugin on start")
+                .ShowHelpLegend(true)
+                .Help(2, "Usage:")
+                .Parse();
+
+            if (parser.HasErrors)
+            {
+                parser.ShowErrors(2, "Issues:");
+                throw new ArgumentException();
+            }
+
+            var argContainer = new ArgContainer
+            {
+                LoadPluginName = parser.GetOption<string?>("plugin")
+            };
             
             var builder = Host.CreateApplicationBuilder();
 
@@ -57,6 +76,7 @@ public partial class App : Application
             builder.Logging.ClearProviders();
             builder.Logging.AddSerilog();
 
+            builder.Services.AddSingleton(argContainer);
             DIConfig.SetupDI(builder.Services);
 
             _host = builder.Build();

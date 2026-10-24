@@ -17,5 +17,7 @@ public static class DIConfig
         services.AddSingleton<MainWindowVM>();
         services.AddSingleton<MainWindow>();
         services.AddSingleton<EditorProvider>();
+        services.AddSingleton<CellEditor>();
+        services.AddSingleton<CellExplorer>();
     }
 }
