@@ -684,8 +684,9 @@ public sealed class TriangleRenderer : IDisposable
 
                 positions = data.Vertices?.ToArray() ?? Array.Empty<Vector3>();
                 uvs = [];
-                vertexColors = data.VertexColors
-                    .Select(color => new Vector4(color.R, color.G, color.B, color.A)).ToArray();
+                vertexColors = data.VertexColors?
+                    .Select(color => new Vector4(color.R, color.G, color.B, color.A))
+                    .ToArray() ?? Array.Empty<Vector4>();
                 triangles = data.Triangles ?? Enumerable.Empty<Triangle>();
             }
 

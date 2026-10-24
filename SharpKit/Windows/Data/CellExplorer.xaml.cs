@@ -3,6 +3,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using Mutagen.Bethesda.Skyrim;
 using Ookii.Dialogs.Wpf;
+using Serilog;
 using SharpKit.Windows.Data.FormEditors;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MessageBox = System.Windows.MessageBox;
@@ -113,6 +114,8 @@ public partial class CellExplorer : Window
                     "Error",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
+                
+                Log.Error(args.Error.GetBaseException(), "Failed to load cell");
 
                 return;
             }

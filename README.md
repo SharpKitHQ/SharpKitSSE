@@ -67,7 +67,7 @@ Feel free to submit a PR with additions to this list.
  - [ ] Sound Output Model
 
 **Character**
- - [ ] *ssociation Type*
+ - [ ] *Association Type*
  - [ ] Class
  - [ ] *Equip Slot*
  - [ ] Faction
