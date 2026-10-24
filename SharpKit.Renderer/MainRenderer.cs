@@ -1,6 +1,5 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
-using DrawingColor = System.Drawing.Color;
 using Microsoft.Extensions.Logging;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Environments;
@@ -63,27 +62,14 @@ public sealed class MainRenderer : IDisposable
     private readonly List<(string TexturePath, string EmissiveTexturePath, Vector4 Tint, Vector4 Specular, Vector4 Emissive, float Glossiness, bool HasEmissiveMap, bool IsTransparent, Vector3 SortCenter, uint Start, uint Count)> _drawRanges = [];
     private Guid? _selectedObjectId;
     
-    private float _orbitYaw = -MathF.PI / 4f;
-    private float _orbitPitch = 0.35f;
-    private float _cameraDistance = 5f;
-    private Vector3 _cameraTarget = Vector3.Zero;
-    private float _modelRadius = 1f;
-    private Vector3 _lightDirection = Vector3.Normalize(new Vector3(-0.4f, 0.7f, 1f));
-    private Vector3 _ambientLightColor = new(0.25f);
-    private Vector3 _directionalLightColor = new(1f, 0.95f, 0.9f);
-    private readonly Vector3[] _ambientLightCube =
-    [
-        new(0.25f), new(0.25f), new(0.25f),
-        new(0.25f), new(0.25f), new(0.25f)
-    ];
+    private readonly OrbitCamera _camera = new();
+    private CellLightingState _cellLighting = new();
     private readonly List<PlacedPointLight> _placedLights = [];
 
     private const int MaxPointLights = 32;
 
     // private readonly List<(Vector3 A, Vector3 B, Vector3 C)> _modelTriangles = new();
 
-    private const float FieldOfView = MathF.PI / 4f;
-    private const float NearPlane = 0.01f;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Vertex
@@ -146,34 +132,6 @@ public sealed class MainRenderer : IDisposable
         _bsaFileProvider.OpenArchive(Path.Combine(dataDirPath, "Skyrim - Textures8.bsa"));
     }
 
-    private struct SceneObject
-    {
-        public Guid Id;
-        public List<(Vector3 A, Vector3 B, Vector3 C, Vector2 UvA, Vector2 UvB, Vector2 UvC,
-            Vector4 ColorA, Vector4 ColorB, Vector4 ColorC)> ModelTris;
-        public Vector3 Position;
-        public Vector3 BoundsMin;
-        public Vector3 BoundsMax;
-        public Vector3 LocalBoundsMin;
-        public Vector3 LocalBoundsMax;
-        public Vector3 Rotation;
-        public float Scale;
-        public Matrix4x4 NifTransform;
-        public string TexturePath;
-        public string EmissiveTexturePath;
-        public Vector4 Tint;
-        public Vector4 VertexColorMultiplier;
-        public Vector4 Specular;
-        public Vector4 Emissive;
-        public float Glossiness;
-        public bool IsTransparent;
-
-        public Vector2 UVScale;
-        public Vector2 UVOffset;
-
-        public IPlacedGetter? ObjectRef;
-    }
-
     private List<SceneObject> _sceneObjects = [];
 
     public void Initialize(nint hwnd, uint width, uint height)
@@ -211,13 +169,13 @@ public sealed class MainRenderer : IDisposable
                 SwapEffect = SwapEffect.Discard
             };
 
-            FeatureLevel[] featureLevels =
-            [
+            var featureLevels = new[]
+            {
                 FeatureLevel.Level_11_1,
                 FeatureLevel.Level_11_0,
                 FeatureLevel.Level_10_1,
                 FeatureLevel.Level_10_0
-            ];
+            };
 
             D3D11CreateDeviceAndSwapChain(
                 null,
@@ -232,7 +190,7 @@ public sealed class MainRenderer : IDisposable
 
             CreateRenderTargets(width, height);
 
-            string shaderPath = Path.Combine(
+            var shaderPath = Path.Combine(
                 AppContext.BaseDirectory, "Shaders", "Model.hlsl");
 
             var vs = Compiler.CompileFromFile(shaderPath, "VSMain", "vs_4_0");
@@ -241,8 +199,8 @@ public sealed class MainRenderer : IDisposable
             _vertexShader = _device!.CreateVertexShader(vs.Span);
             _pixelShader = _device.CreatePixelShader(ps.Span);
 
-            InputElementDescription[] inputElements =
-            [
+            var inputElements = new InputElementDescription[]
+            {
                 new("POSITION", 0, Format.R32G32B32_Float, 0, 0),
                 new("NORMAL", 0, Format.R32G32B32_Float, 12, 0),
                 new("TEXCOORD", 0, Format.R32G32_Float, 24, 0),
@@ -250,7 +208,7 @@ public sealed class MainRenderer : IDisposable
                 new("TEXCOORD", 2, Format.R32G32B32A32_Float, 48, 0),
                 new("TEXCOORD", 3, Format.R32G32B32A32_Float, 64, 0),
                 new("TEXCOORD", 4, Format.R32G32B32A32_Float, 80, 0)
-            ];
+            };
 
             _inputLayout = _device.CreateInputLayout(inputElements, vs.Span);
 
@@ -324,7 +282,7 @@ public sealed class MainRenderer : IDisposable
 
         _dataFolderPath = env.DataFolderPath;
         _log.LogInformation("Loading cell {Name}", cell.Name?.String);
-        ApplyCellLighting(cell, env);
+        _cellLighting = CellLightingState.Resolve(cell, env, _log);
 
         var loadJobs = new List<Action>();
         foreach (var p in cell.Temporary.Concat(cell.Persistent))
@@ -345,16 +303,16 @@ public sealed class MainRenderer : IDisposable
             var rotation = new Vector3(placement?.Rotation.X ?? 0, placement?.Rotation.Y ?? 0, placement?.Rotation.Z ?? 0);
             if (b is ILightGetter placedLight)
             {
-                string lightModelPath = placedLight.Model?.File.GivenPath ?? string.Empty;
+                var lightModelPath = placedLight.Model?.File.GivenPath ?? string.Empty;
                 if (!string.IsNullOrWhiteSpace(lightModelPath))
                     loadJobs.Add(() => LoadModelAsset(lightModelPath, position, rotation, po.Scale ?? 1f, env, false, p));
                 loadJobs.Add(() => LoadLightMarker(placedLight, position, rotation, env));
             }
             else if (b is IModeledGetter stat)
             {
-                string modelPath = stat.Model?.File.GivenPath ?? string.Empty;
-                bool isXMarker = IsXMarkerEditorId(b.EditorID);
-                float scale = po.Scale ?? 1f;
+                var modelPath = stat.Model?.File.GivenPath ?? string.Empty;
+                var isXMarker = IsXMarkerEditorId(b.EditorID);
+                var scale = po.Scale ?? 1f;
                 loadJobs.Add(() => LoadModelAsset(modelPath, position, rotation, scale, env, isXMarker, p));
             }
         }
@@ -401,9 +359,9 @@ public sealed class MainRenderer : IDisposable
         if (string.IsNullOrWhiteSpace(relativeModelPath))
             return;
 
-        string normalizedPath = relativeModelPath.Replace('\\', Path.DirectorySeparatorChar)
+        var normalizedPath = relativeModelPath.Replace('\\', Path.DirectorySeparatorChar)
             .TrimStart(Path.DirectorySeparatorChar);
-        string loosePath = Path.Combine(env.DataFolderPath, "meshes", normalizedPath);
+        var loosePath = Path.Combine(env.DataFolderPath, "meshes", normalizedPath);
         if (File.Exists(loosePath))
         {
             LoadModel(loosePath, position, rotation, scale,
@@ -411,7 +369,7 @@ public sealed class MainRenderer : IDisposable
             return;
         }
 
-        string archivePath = Path.Combine("meshes", relativeModelPath.Replace('\\', '/'));
+        var archivePath = Path.Combine("meshes", relativeModelPath.Replace('\\', '/'));
         var stream = _bsaFileProvider.GetFileFromAny(archivePath);
         if (stream is not null)
             LoadModel(stream, position, rotation, scale,
@@ -423,7 +381,7 @@ public sealed class MainRenderer : IDisposable
     {
         string markerFile;
         float markerScale;
-        Vector3 markerRotation = Vector3.Zero;
+        var markerRotation = Vector3.Zero;
         var flags = light.Flags;
 
         if (flags.HasFlag(Light.Flag.ShadowHemisphere))
@@ -455,25 +413,25 @@ public sealed class MainRenderer : IDisposable
             markerScale = 0.25f;
         }
 
-        Vector3 combinedRotation = rotation + markerRotation;
-        bool hasTranslucentShell = markerFile is "marker_lightshadow.nif"
+        var combinedRotation = rotation + markerRotation;
+        var hasTranslucentShell = markerFile is "marker_lightshadow.nif"
             or "marker_spotlight.nif" or "marker_halfomni.nif";
-        Vector4 markerTint = new(ToLinearRgb(light.Color), hasTranslucentShell ? 2.5f : 1f);
-        string markerPath = Path.Combine("markers", markerFile);
-        string loosePath = Path.Combine(env.DataFolderPath, "meshes", markerPath);
+        var markerTint = new Vector4(ToLinearRgb(light.Color), hasTranslucentShell ? 2.5f : 1f);
+        var markerPath = Path.Combine("markers", markerFile);
+        var loosePath = Path.Combine(env.DataFolderPath, "meshes", markerPath);
         if (File.Exists(loosePath))
         {
             LoadModel(loosePath, position, combinedRotation, markerScale, false, markerTint, null);
             return;
         }
 
-        string[] archiveCandidates =
-        [
+        var archiveCandidates = new[]
+        {
             $"meshes/{markerPath.Replace('\\', '/')}",
             markerPath.Replace('\\', '/'),
             $"meshes/{markerFile}"
-        ];
-        foreach (string archiveCandidate in archiveCandidates)
+        };
+        foreach (var archiveCandidate in archiveCandidates)
         {
             var stream = _bsaFileProvider.GetFileFromAny(archiveCandidate);
             if (stream is null)
@@ -527,29 +485,29 @@ public sealed class MainRenderer : IDisposable
             throw new InvalidOperationException("Call Initialize before LoadModel.");
 
         var nif = new NifFile();
-        int result = nif.Load(fileStream);
+        var result = nif.Load(fileStream);
 
         if (result != 0)
             throw new InvalidOperationException($"Failed to load NIF (error {result}).");
 
         // _modelTriangles.Clear();
 
-        int shapeCount = 0;
-        int renderableTriangleCount = 0;
-        int sourceVertexCount = 0;
-        int sourceTriangleCount = 0;
+        var shapeCount = 0;
+        var renderableTriangleCount = 0;
+        var sourceVertexCount = 0;
+        var sourceTriangleCount = 0;
 
         var nifTransforms = new Dictionary<INiShape, Matrix4x4>(ReferenceEqualityComparer.Instance);
         void CollectTransforms(NiAVObject node, Matrix4x4 parentTransform)
         {
-            Matrix4x4 localTransform = CreateNifTransform(node.Translation, node.Rotation, node.Scale);
-            Matrix4x4 accumulatedTransform = localTransform * parentTransform;
+            var localTransform = CreateNifTransform(node.Translation, node.Rotation, node.Scale);
+            var accumulatedTransform = localTransform * parentTransform;
             if (node is INiShape nodeShape)
                 nifTransforms[nodeShape] = accumulatedTransform;
 
             if (node is NiNode niNode)
             {
-                foreach (int childIndex in niNode.Children.Indices)
+                foreach (var childIndex in niNode.Children.Indices)
                 {
                     if (nif.GetBlock(childIndex) is NiAVObject child)
                         CollectTransforms(child, accumulatedTransform);
@@ -560,7 +518,7 @@ public sealed class MainRenderer : IDisposable
         foreach (var rootNode in nif.GetRootNodes())
             CollectTransforms(rootNode, Matrix4x4.Identity);
 
-        Guid loadedObjectId = Guid.NewGuid();
+        var loadedObjectId = Guid.NewGuid();
         foreach (var shape in nif.GetShapes())
         {
             shapeCount++;
@@ -600,7 +558,7 @@ public sealed class MainRenderer : IDisposable
 
                 if (shader is BSEffectShaderProperty effectShader)
                 {
-                    string effectTexturePath = effectShader.SourceTexture.Content;
+                    var effectTexturePath = effectShader.SourceTexture.Content;
                     if (isXMarker && alphaProperty is not null && string.IsNullOrWhiteSpace(effectTexturePath))
                     {
                         // Creation Kit displays textureless effect-shader marker meshes as red translucent proxies.
@@ -610,8 +568,8 @@ public sealed class MainRenderer : IDisposable
                     else
                     {
                         var color = effectShader.BaseColor;
-                        float falloffOpacity = (effectShader.FalloffStartOpacity + effectShader.FalloffStopOpacity) * 0.5f;
-                        float alpha = float.IsFinite(falloffOpacity) && falloffOpacity > 0f
+                        var falloffOpacity = (effectShader.FalloffStartOpacity + effectShader.FalloffStopOpacity) * 0.5f;
+                        var alpha = float.IsFinite(falloffOpacity) && falloffOpacity > 0f
                             ? color.A * falloffOpacity
                             : color.A;
 
@@ -628,14 +586,14 @@ public sealed class MainRenderer : IDisposable
                 }
                 else if (shader is BSLightingShaderProperty lightingShader)
                 {
-                    Vector3 specularColor = ToLinearRgb(lightingShader.SpecularColor);
-                    float specularStrength = float.IsFinite(lightingShader.SpecularStrength)
+                    var specularColor = ToLinearRgb(lightingShader.SpecularColor);
+                    var specularStrength = float.IsFinite(lightingShader.SpecularStrength)
                         ? MathF.Max(lightingShader.SpecularStrength, 0f)
                         : 0f;
                     obj.Specular = new Vector4(specularColor, specularStrength);
 
-                    Vector3 emissiveColor = ToLinearRgb(lightingShader.EmissiveColor);
-                    float emissiveMultiple = float.IsFinite(lightingShader.EmissiveMultiple)
+                    var emissiveColor = ToLinearRgb(lightingShader.EmissiveColor);
+                    var emissiveMultiple = float.IsFinite(lightingShader.EmissiveMultiple)
                         ? MathF.Max(lightingShader.EmissiveMultiple, 0f)
                         : 0f;
                     obj.Emissive = new Vector4(emissiveColor, emissiveMultiple);
@@ -643,7 +601,7 @@ public sealed class MainRenderer : IDisposable
                         ? Math.Clamp(lightingShader.Glossiness, 1f, 256f)
                         : 32f;
 
-                    float opacity = float.IsFinite(lightingShader.Alpha)
+                    var opacity = float.IsFinite(lightingShader.Alpha)
                         ? Math.Clamp(lightingShader.Alpha, 0f, 1f)
                         : 1f;
                     obj.Tint.W *= opacity;
@@ -700,32 +658,32 @@ public sealed class MainRenderer : IDisposable
             {
                 sourceTriangleCount++;
 
-                int i0 = tri.V1;
-                int i1 = tri.V2;
-                int i2 = tri.V3;
+                var i0 = tri.V1;
+                var i1 = tri.V2;
+                var i2 = tri.V3;
 
                 if ((uint)i0 >= (uint)positions.Length ||
                     (uint)i1 >= (uint)positions.Length ||
                     (uint)i2 >= (uint)positions.Length)
                     continue;
 
-                Vector3 a = positions[i0];
-                Vector3 b = positions[i1];
-                Vector3 c = positions[i2];
+                var a = positions[i0];
+                var b = positions[i1];
+                var c = positions[i2];
 
                 if (!IsFinite(a) || !IsFinite(b) || !IsFinite(c))
                     continue;
 
-                Vector3 cross = Vector3.Cross(b - a, c - a);
+                var cross = Vector3.Cross(b - a, c - a);
                 if (cross.LengthSquared() < 1e-12f)
                     continue;
 
-                Vector2 uvA = (uint)i0 < (uint)uvs.Length ? uvs[i0] : Vector2.Zero;
-                Vector2 uvB = (uint)i1 < (uint)uvs.Length ? uvs[i1] : Vector2.Zero;
-                Vector2 uvC = (uint)i2 < (uint)uvs.Length ? uvs[i2] : Vector2.Zero;
-                Vector4 colorA = (uint)i0 < (uint)vertexColors.Length ? vertexColors[i0] : Vector4.One;
-                Vector4 colorB = (uint)i1 < (uint)vertexColors.Length ? vertexColors[i1] : Vector4.One;
-                Vector4 colorC = (uint)i2 < (uint)vertexColors.Length ? vertexColors[i2] : Vector4.One;
+                var uvA = (uint)i0 < (uint)uvs.Length ? uvs[i0] : Vector2.Zero;
+                var uvB = (uint)i1 < (uint)uvs.Length ? uvs[i1] : Vector2.Zero;
+                var uvC = (uint)i2 < (uint)uvs.Length ? uvs[i2] : Vector2.Zero;
+                var colorA = (uint)i0 < (uint)vertexColors.Length ? vertexColors[i0] : Vector4.One;
+                var colorB = (uint)i1 < (uint)vertexColors.Length ? vertexColors[i1] : Vector4.One;
+                var colorC = (uint)i2 < (uint)vertexColors.Length ? vertexColors[i2] : Vector4.One;
                 if (isXMarker)
                 {
                     // Proxy opacity is specified by the XMarker effect shader tint.
@@ -733,12 +691,12 @@ public sealed class MainRenderer : IDisposable
                 }
                 obj.IsTransparent |= colorA.W < 0.999f || colorB.W < 0.999f || colorC.W < 0.999f;
                 obj.ModelTris.Add((a, b, c, uvA, uvB, uvC, colorA, colorB, colorC));
-                obj.BoundsMin = Vector3.Min(obj.BoundsMin, TransformPoint(obj, a));
-                obj.BoundsMin = Vector3.Min(obj.BoundsMin, TransformPoint(obj, b));
-                obj.BoundsMin = Vector3.Min(obj.BoundsMin, TransformPoint(obj, c));
-                obj.BoundsMax = Vector3.Max(obj.BoundsMax, TransformPoint(obj, a));
-                obj.BoundsMax = Vector3.Max(obj.BoundsMax, TransformPoint(obj, b));
-                obj.BoundsMax = Vector3.Max(obj.BoundsMax, TransformPoint(obj, c));
+                obj.BoundsMin = Vector3.Min(obj.BoundsMin, obj.TransformPoint(a));
+                obj.BoundsMin = Vector3.Min(obj.BoundsMin, obj.TransformPoint(b));
+                obj.BoundsMin = Vector3.Min(obj.BoundsMin, obj.TransformPoint(c));
+                obj.BoundsMax = Vector3.Max(obj.BoundsMax, obj.TransformPoint(a));
+                obj.BoundsMax = Vector3.Max(obj.BoundsMax, obj.TransformPoint(b));
+                obj.BoundsMax = Vector3.Max(obj.BoundsMax, obj.TransformPoint(c));
                 obj.LocalBoundsMin = Vector3.Min(obj.LocalBoundsMin, Vector3.Transform(a, obj.NifTransform) * obj.Scale);
                 obj.LocalBoundsMin = Vector3.Min(obj.LocalBoundsMin, Vector3.Transform(b, obj.NifTransform) * obj.Scale);
                 obj.LocalBoundsMin = Vector3.Min(obj.LocalBoundsMin, Vector3.Transform(c, obj.NifTransform) * obj.Scale);
@@ -785,16 +743,16 @@ public sealed class MainRenderer : IDisposable
             return;
 
         // Compute the combined bounding box of all scene objects in world space.
-        Vector3 min = new(float.PositiveInfinity);
-        Vector3 max = new(float.NegativeInfinity);
+        var min = new Vector3(float.PositiveInfinity);
+        var max = new Vector3(float.NegativeInfinity);
 
         foreach (var obj in _sceneObjects)
         {
             foreach (var tri in obj.ModelTris)
             {
-                Vector3 a = TransformPoint(obj, tri.A);
-                Vector3 b = TransformPoint(obj, tri.B);
-                Vector3 c = TransformPoint(obj, tri.C);
+                var a = obj.TransformPoint(tri.A);
+                var b = obj.TransformPoint(tri.B);
+                var c = obj.TransformPoint(tri.C);
 
                 min = Vector3.Min(min, a);
                 min = Vector3.Min(min, b);
@@ -806,15 +764,7 @@ public sealed class MainRenderer : IDisposable
         }
 
         // Set camera target to the center of all bounds.
-        _cameraTarget = (min + max) * 0.5f;
-
-        // Compute the radius needed to frame all objects.
-        Vector3 extent = (max - min) * 0.5f;
-        float diagonal = extent.Length();
-        _modelRadius = MathF.Max(diagonal, 0.01f);
-
-        // Frame with padding based on field of view.
-        _cameraDistance = _modelRadius / MathF.Sin(FieldOfView * 0.5f) * 1.5f;
+        _camera.Frame(min, max);
 
         Render();
     }
@@ -827,13 +777,7 @@ public sealed class MainRenderer : IDisposable
         if (!_initialized || _disposed)
             return;
 
-        const float sensitivity = 0.003f;
-
-        _orbitYaw -= deltaX * sensitivity;
-        _orbitPitch = Math.Clamp(
-            _orbitPitch + deltaY * sensitivity,
-            -MathF.PI / 2f + 0.01f,
-            MathF.PI / 2f - 0.01f);
+        _camera.Orbit(deltaX, deltaY);
 
         Render();
     }
@@ -843,29 +787,7 @@ public sealed class MainRenderer : IDisposable
         if (!_initialized || _disposed)
             return;
 
-        // Screen-space panning: deltaX moves left/right on screen, deltaY moves up/down on screen.
-        // Compute the camera's right and up vectors in screen space.
-        float cosPitch = MathF.Cos(_orbitPitch);
-        Vector3 forward = Vector3.Normalize(new Vector3(
-            cosPitch * MathF.Cos(_orbitYaw),
-            cosPitch * MathF.Sin(_orbitYaw),
-            MathF.Sin(_orbitPitch)));
-
-        // Right vector is perpendicular to forward and world up (Z)
-        Vector3 right = Vector3.Normalize(
-            Vector3.Cross(forward, Vector3.UnitZ));
-
-        // Up vector completes the orthogonal basis
-        Vector3 up = Vector3.Normalize(
-            Vector3.Cross(right, forward));
-
-        // Pan scale proportional to camera distance, normalized by screen size
-        float aspect = (float)_width / Math.Max(1u, _height);
-        float panScale = _cameraDistance * 0.001f;
-
-        // Pan in screen space: X moves along right, Y moves along up
-        _cameraTarget += right * (deltaX * panScale);
-        _cameraTarget += up * (deltaY * panScale);
+        _camera.Pan(deltaX, deltaY);
 
         Render();
     }
@@ -875,14 +797,7 @@ public sealed class MainRenderer : IDisposable
         if (!_initialized || _disposed)
             return;
 
-        // Positive delta zooms in; negative delta zooms out.
-        _cameraDistance *= MathF.Exp(-delta * 0.1f);
-
-        // Keep the camera from getting too close or too far away.
-        _cameraDistance = Math.Clamp(
-            _cameraDistance,
-            _modelRadius * 0.05f,
-            _modelRadius * 100f);
+        _camera.Zoom(delta);
 
         Render();
     }
@@ -921,11 +836,7 @@ public sealed class MainRenderer : IDisposable
         if (_indexCount > 0)
         {
             UpdateCameraConstants();
-            float cosPitch = MathF.Cos(_orbitPitch);
-            Vector3 cameraPosition = _cameraTarget + new Vector3(
-                _cameraDistance * cosPitch * MathF.Cos(_orbitYaw),
-                _cameraDistance * cosPitch * MathF.Sin(_orbitYaw),
-                _cameraDistance * MathF.Sin(_orbitPitch));
+            var cameraPosition = _camera.Position;
             foreach (var range in _drawRanges.Where(range => !range.IsTransparent)
                          .Concat(_drawRanges.Where(range => range.IsTransparent)
                              .OrderByDescending(range => Vector3.DistanceSquared(range.SortCenter, cameraPosition))))
@@ -985,31 +896,31 @@ public sealed class MainRenderer : IDisposable
             bool IsTransparent, Vector3 SortCenter, uint Start, uint Count)>();
         foreach (var obj in objectsByTexture.SelectMany(group => group))
         {
-            uint objectStartIndex = (uint)indices.Count;
-            Vector3 sortCenter = Vector3.Zero;
-            int sortPointCount = 0;
-            _modelRadius = 0f;
+            var objectStartIndex = (uint)indices.Count;
+            var sortCenter = Vector3.Zero;
+            var sortPointCount = 0;
+            var modelRadius = 0f;
 
             // Duplicate each face's vertices so every face has a flat normal.
             foreach (var tri in obj.ModelTris)
             {
-                Vector3 a = TransformPoint(obj, tri.A);
-                Vector3 b = TransformPoint(obj, tri.B);
-                Vector3 c = TransformPoint(obj, tri.C);
+                var a = obj.TransformPoint(tri.A);
+                var b = obj.TransformPoint(tri.B);
+                var c = obj.TransformPoint(tri.C);
                 sortCenter += a + b + c;
                 sortPointCount += 3;
 
-                Vector3 cross = Vector3.Cross(b - a, c - a);
+                var cross = Vector3.Cross(b - a, c - a);
                 if (cross.LengthSquared() < 1e-12f)
                     continue;
 
-                Vector3 normal = Vector3.Normalize(cross);
+                var normal = Vector3.Normalize(cross);
 
-                _modelRadius = MathF.Max(_modelRadius, a.Length());
-                _modelRadius = MathF.Max(_modelRadius, b.Length());
-                _modelRadius = MathF.Max(_modelRadius, c.Length());
+                modelRadius = MathF.Max(modelRadius, a.Length());
+                modelRadius = MathF.Max(modelRadius, b.Length());
+                modelRadius = MathF.Max(modelRadius, c.Length());
 
-                uint start = (uint)vertices.Count;
+                var start = (uint)vertices.Count;
                 vertices.Add(new Vertex(a, normal, tri.UvA * obj.UVScale + obj.UVOffset,
                     obj.Tint * obj.VertexColorMultiplier * tri.ColorA,
                     obj.Specular, obj.Emissive, obj.Glossiness, !string.IsNullOrWhiteSpace(obj.EmissiveTexturePath)));
@@ -1025,7 +936,7 @@ public sealed class MainRenderer : IDisposable
                 indices.Add(start + 2);
             }
 
-            uint objectIndexCount = (uint)indices.Count - objectStartIndex;
+            var objectIndexCount = (uint)indices.Count - objectStartIndex;
             if (objectIndexCount > 0)
             {
                 drawRanges.Add((obj.TexturePath ?? string.Empty, obj.EmissiveTexturePath ?? string.Empty,
@@ -1035,10 +946,7 @@ public sealed class MainRenderer : IDisposable
                     objectStartIndex, objectIndexCount));
             }
 
-            _modelRadius = MathF.Max(_modelRadius, 0.01f);
-
-            // Frame the model with a little padding.
-            _cameraDistance = _modelRadius / MathF.Sin(FieldOfView * 0.5f) * 1.25f;
+            _camera.FrameRadius(modelRadius);
 
         }
 
@@ -1058,9 +966,9 @@ public sealed class MainRenderer : IDisposable
     {
         _context!.PSSetShaderResource(slot, slot == 0 ? _whiteTextureView : _blackTextureView);
 
-        string relativePath = (nifTexturePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
+        var relativePath = (nifTexturePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
         if (string.IsNullOrWhiteSpace(relativePath)) return;
-        string textureRelativePath = relativePath.StartsWith("textures/", StringComparison.OrdinalIgnoreCase)
+        var textureRelativePath = relativePath.StartsWith("textures/", StringComparison.OrdinalIgnoreCase)
             ? relativePath
             : "textures/" + relativePath;
         if (_unavailableTexturePaths.Contains(textureRelativePath)) return;
@@ -1070,10 +978,10 @@ public sealed class MainRenderer : IDisposable
             return;
         }
 
-        string loosePath = Path.Combine(
+        var loosePath = Path.Combine(
             _dataFolderPath ?? string.Empty,
             textureRelativePath.Replace('/', Path.DirectorySeparatorChar));
-        Stream? stream = File.Exists(loosePath)
+        var stream = File.Exists(loosePath)
             ? File.OpenRead(loosePath)
             : _bsaFileProvider.GetFileFromAny(textureRelativePath);
         if (stream is null)
@@ -1095,10 +1003,10 @@ public sealed class MainRenderer : IDisposable
                 return;
             }
 
-            int height = checked((int)BitConverter.ToUInt32(bytes, 12));
-            int width = checked((int)BitConverter.ToUInt32(bytes, 16));
-            string fourCc = System.Text.Encoding.ASCII.GetString(bytes, 84, 4);
-            Format format = fourCc switch
+            var height = checked((int)BitConverter.ToUInt32(bytes, 12));
+            var width = checked((int)BitConverter.ToUInt32(bytes, 16));
+            var fourCc = System.Text.Encoding.ASCII.GetString(bytes, 84, 4);
+            var format = fourCc switch
             {
                 "DXT1" => Format.BC1_UNorm,
                 "DXT3" => Format.BC2_UNorm,
@@ -1112,18 +1020,18 @@ public sealed class MainRenderer : IDisposable
                 return;
             }
 
-            int blockBytes = format == Format.BC1_UNorm ? 8 : 16;
-            int maxMipLevels = 1 + (int)MathF.Floor(MathF.Log2(Math.Max(width, height)));
-            int mipLevels = Math.Clamp((int)BitConverter.ToUInt32(bytes, 28), 1, maxMipLevels);
+            var blockBytes = format == Format.BC1_UNorm ? 8 : 16;
+            var maxMipLevels = 1 + (int)MathF.Floor(MathF.Log2(Math.Max(width, height)));
+            var mipLevels = Math.Clamp((int)BitConverter.ToUInt32(bytes, 28), 1, maxMipLevels);
             var mipDescriptions = new (int Width, int Height, int RowPitch, int DataSize)[mipLevels];
-            int dataOffset = 128;
-            bool mipDataIsValid = true;
-            for (int level = 0; level < mipLevels; level++)
+            var dataOffset = 128;
+            var mipDataIsValid = true;
+            for (var level = 0; level < mipLevels; level++)
             {
-                int mipWidth = Math.Max(1, width >> level);
-                int mipHeight = Math.Max(1, height >> level);
-                int rowPitch = Math.Max(1, (mipWidth + 3) / 4) * blockBytes;
-                int dataSize = rowPitch * Math.Max(1, (mipHeight + 3) / 4);
+                var mipWidth = Math.Max(1, width >> level);
+                var mipHeight = Math.Max(1, height >> level);
+                var rowPitch = Math.Max(1, (mipWidth + 3) / 4) * blockBytes;
+                var dataSize = rowPitch * Math.Max(1, (mipHeight + 3) / 4);
                 mipDescriptions[level] = (mipWidth, mipHeight, rowPitch, dataSize);
                 if (dataOffset > bytes.Length - dataSize)
                 {
@@ -1149,8 +1057,8 @@ public sealed class MainRenderer : IDisposable
                 fixed (byte* textureData = bytes)
                 {
                     var initialData = new SubresourceData[mipLevels];
-                    int mipOffset = 128;
-                    for (int level = 0; level < mipLevels; level++)
+                    var mipOffset = 128;
+                    for (var level = 0; level < mipLevels; level++)
                     {
                         var mip = mipDescriptions[level];
                         initialData[level] = new SubresourceData(
@@ -1168,7 +1076,7 @@ public sealed class MainRenderer : IDisposable
 
     private void CreateWhiteTexture()
     {
-        byte[] pixel = [255, 255, 255, 255];
+        var pixel = new byte[] { 255, 255, 255, 255 };
         var description = new Texture2DDescription
         {
             Width = 1, Height = 1, MipLevels = 1, ArraySize = 1,
@@ -1188,123 +1096,11 @@ public sealed class MainRenderer : IDisposable
 
     public void SelectObjectAt(float pixelX, float pixelY, float viewportWidth, float viewportHeight)
     {
-        if (viewportWidth <= 0f || viewportHeight <= 0f || _sceneObjects.Count == 0)
-            return;
-
-        float cosPitch = MathF.Cos(_orbitPitch);
-        Vector3 cameraPosition = _cameraTarget + new Vector3(
-            _cameraDistance * cosPitch * MathF.Cos(_orbitYaw),
-            _cameraDistance * cosPitch * MathF.Sin(_orbitYaw),
-            _cameraDistance * MathF.Sin(_orbitPitch));
-        Matrix4x4 view = Matrix4x4.CreateLookAt(cameraPosition, _cameraTarget, Vector3.UnitZ);
-        Matrix4x4 projection = Matrix4x4.CreatePerspectiveFieldOfView(
-            FieldOfView, viewportWidth / viewportHeight, NearPlane,
-            MathF.Max(_cameraDistance + _modelRadius * 4f, 100f));
-        if (!Matrix4x4.Invert(view * projection, out Matrix4x4 inverseViewProjection))
-            return;
-
-        float ndcX = 2f * pixelX / viewportWidth - 1f;
-        float ndcY = 1f - 2f * pixelY / viewportHeight;
-        Vector3 nearPoint = Unproject(ndcX, ndcY, 0f, inverseViewProjection);
-        Vector3 farPoint = Unproject(ndcX, ndcY, 1f, inverseViewProjection);
-        Vector3 rayDirection = Vector3.Normalize(farPoint - nearPoint);
-
-        float closestDistance = float.PositiveInfinity;
-        Guid? hitObjectId = null;
-        foreach (var obj in _sceneObjects)
-        {
-            if (!RayIntersectsBounds(cameraPosition, rayDirection, obj.BoundsMin, obj.BoundsMax))
-                continue;
-
-            foreach (var tri in obj.ModelTris)
-            {
-                Vector3 a = TransformPoint(obj, tri.A);
-                Vector3 b = TransformPoint(obj, tri.B);
-                Vector3 c = TransformPoint(obj, tri.C);
-                if (RayIntersectsTriangle(cameraPosition, rayDirection, a, b, c, out float distance) &&
-                    distance < closestDistance)
-                {
-                    closestDistance = distance;
-                    hitObjectId = obj.Id;
-                }
-            }
-        }
-
-        _selectedObjectId = hitObjectId;
+        _selectedObjectId = ScenePicker.Pick(_sceneObjects, _camera,
+            pixelX, pixelY, viewportWidth, viewportHeight);
         UpdateSelectionBoundsBuffer();
         Render();
     }
-
-    private static Vector3 Unproject(float x, float y, float z, Matrix4x4 inverseViewProjection)
-    {
-        Vector4 point = Vector4.Transform(new Vector4(x, y, z, 1f), inverseViewProjection);
-        return new Vector3(point.X, point.Y, point.Z) / point.W;
-    }
-
-    private static bool RayIntersectsBounds(Vector3 origin, Vector3 direction, Vector3 min, Vector3 max)
-    {
-        float tMin = 0f;
-        float tMax = float.PositiveInfinity;
-        for (int axis = 0; axis < 3; axis++)
-        {
-            float o = axis == 0 ? origin.X : axis == 1 ? origin.Y : origin.Z;
-            float d = axis == 0 ? direction.X : axis == 1 ? direction.Y : direction.Z;
-            float lo = axis == 0 ? min.X : axis == 1 ? min.Y : min.Z;
-            float hi = axis == 0 ? max.X : axis == 1 ? max.Y : max.Z;
-            if (MathF.Abs(d) < 1e-8f)
-            {
-                if (o < lo || o > hi) return false;
-                continue;
-            }
-
-            float t1 = (lo - o) / d;
-            float t2 = (hi - o) / d;
-            if (t1 > t2) (t1, t2) = (t2, t1);
-            tMin = MathF.Max(tMin, t1);
-            tMax = MathF.Min(tMax, t2);
-            if (tMin > tMax) return false;
-        }
-        return true;
-    }
-
-    private static bool RayIntersectsTriangle(Vector3 origin, Vector3 direction,
-        Vector3 a, Vector3 b, Vector3 c, out float distance)
-    {
-        const float epsilon = 1e-7f;
-        Vector3 edge1 = b - a;
-        Vector3 edge2 = c - a;
-        Vector3 p = Vector3.Cross(direction, edge2);
-        float determinant = Vector3.Dot(edge1, p);
-        // The rasterizer keeps counter-clockwise front faces and culls back faces.
-        // Moller-Trumbore's determinant is positive for those faces when the ray
-        // travels from the camera toward the front of the triangle.
-        if (determinant <= epsilon)
-        {
-            distance = 0f;
-            return false;
-        }
-
-        float inverseDeterminant = 1f / determinant;
-        Vector3 t = origin - a;
-        float u = Vector3.Dot(t, p) * inverseDeterminant;
-        if (u < 0f || u > 1f)
-        {
-            distance = 0f;
-            return false;
-        }
-
-        Vector3 q = Vector3.Cross(t, edge1);
-        float v = Vector3.Dot(direction, q) * inverseDeterminant;
-        if (v < 0f || u + v > 1f)
-        {
-            distance = 0f;
-            return false;
-        }
-
-        distance = Vector3.Dot(edge2, q) * inverseDeterminant;
-        return distance >= 0f;
-    }
-
     private void UpdateSelectionBoundsBuffer()
     {
         _selectionVertexBuffer?.Dispose();
@@ -1318,8 +1114,8 @@ public sealed class MainRenderer : IDisposable
             return;
 
         var first = selectedObjects[0];
-        Vector3 min = first.LocalBoundsMin;
-        Vector3 max = first.LocalBoundsMax;
+        var min = first.LocalBoundsMin;
+        var max = first.LocalBoundsMax;
         foreach (var obj in selectedObjects.Skip(1))
         {
             min = Vector3.Min(min, obj.LocalBoundsMin);
@@ -1328,22 +1124,22 @@ public sealed class MainRenderer : IDisposable
         if (!IsFinite(min) || !IsFinite(max))
             return;
 
-        Vector3[] localCorners =
-        [
+        var localCorners = new Vector3[]
+        {
             new(min.X, min.Y, min.Z), new(max.X, min.Y, min.Z),
             new(max.X, max.Y, min.Z), new(min.X, max.Y, min.Z),
             new(min.X, min.Y, max.Z), new(max.X, min.Y, max.Z),
             new(max.X, max.Y, max.Z), new(min.X, max.Y, max.Z)
-        ];
-        Matrix4x4 rotation =
+        };
+        var rotation =
             Matrix4x4.CreateRotationZ(-first.Rotation.Z) *
             Matrix4x4.CreateRotationY(-first.Rotation.Y) *
             Matrix4x4.CreateRotationX(-first.Rotation.X);
-        Vector3[] corners = localCorners.Select(corner => Vector3.Transform(corner, rotation) + first.Position).ToArray();
-        int[] edges = [0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4, 0, 4, 1, 5, 2, 6, 3, 7];
-        Vector4 tint = new(1f, 0.75f, 0.05f, 1f);
-        Vector4 emissive = new(1f, 0.65f, 0f, 4f);
-        Vertex[] vertices = edges.Select(index => new Vertex(corners[index], Vector3.UnitZ,
+        var corners = localCorners.Select(corner => Vector3.Transform(corner, rotation) + first.Position).ToArray();
+        var edges = new[] { 0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4, 0, 4, 1, 5, 2, 6, 3, 7 };
+        var tint = new Vector4(1f, 0.75f, 0.05f, 1f);
+        var emissive = new Vector4(1f, 0.65f, 0f, 4f);
+        var vertices = edges.Select(index => new Vertex(corners[index], Vector3.UnitZ,
             Vector2.Zero, tint, Vector4.Zero, emissive, 1f, false)).ToArray();
         _selectionVertexBuffer = _device!.CreateBuffer(vertices, BindFlags.VertexBuffer);
         _selectionVertexCount = (uint)vertices.Length;
@@ -1366,7 +1162,7 @@ public sealed class MainRenderer : IDisposable
 
     private void CreateBlackTexture()
     {
-        byte[] pixel = [0, 0, 0, 255];
+        var pixel = new byte[] { 0, 0, 0, 255 };
         var description = new Texture2DDescription
         {
             Width = 1, Height = 1, MipLevels = 1, ArraySize = 1,
@@ -1386,34 +1182,17 @@ public sealed class MainRenderer : IDisposable
 
     private void UpdateCameraConstants()
     {
-        float aspect = (float)_width / Math.Max(1u, _height);
-
-        float cosPitch = MathF.Cos(_orbitPitch);
-        Vector3 cameraOffset = new(
-            _cameraDistance * cosPitch * MathF.Cos(_orbitYaw),
-            _cameraDistance * cosPitch * MathF.Sin(_orbitYaw),
-            _cameraDistance * MathF.Sin(_orbitPitch));
-
-        Vector3 cameraPosition = _cameraTarget + cameraOffset;
-
-        Matrix4x4 view = Matrix4x4.CreateLookAt(
-            cameraPosition,
-            _cameraTarget,
-            Vector3.UnitZ);
-
-        float farPlane = MathF.Max(_cameraDistance + _modelRadius * 4f, 100f);
-        Matrix4x4 projection = Matrix4x4.CreatePerspectiveFieldOfView(
-            FieldOfView, MathF.Max(aspect, 0.01f), NearPlane, farPlane);
-
+        var aspect = (float)_width / Math.Max(1u, _height);
+        var cameraPosition = _camera.Position;
         // System.Numerics uses row-vector composition; HLSL uses mul(vector, matrix).
-        Matrix4x4 worldViewProjection = view * projection;
+        var worldViewProjection = _camera.CreateViewProjection(aspect);
 
         var selectedLights = _placedLights
             .OrderByDescending(light =>
             {
-                float distanceSquared = Vector3.DistanceSquared(light.Position, _cameraTarget);
-                float radiusSquared = light.Radius * light.Radius;
-                float luminance = Vector3.Dot(light.Color, new Vector3(0.2126f, 0.7152f, 0.0722f));
+                var distanceSquared = Vector3.DistanceSquared(light.Position, _camera.Target);
+                var radiusSquared = light.Radius * light.Radius;
+                var luminance = Vector3.Dot(light.Color, new Vector3(0.2126f, 0.7152f, 0.0722f));
                 return luminance * radiusSquared / (distanceSquared + radiusSquared + 1f);
             })
             .Take(MaxPointLights)
@@ -1424,26 +1203,26 @@ public sealed class MainRenderer : IDisposable
             var constants = new SceneConstants
             {
                 WorldViewProjection = worldViewProjection,
-                LightDirection = new Vector4(_lightDirection, 0f),
+                LightDirection = new Vector4(_cellLighting.Direction, 0f),
                 CameraPosition = new Vector4(cameraPosition, 1f),
-                AmbientLightColor = new Vector4(_ambientLightColor, 1f),
-                DirectionalLightColor = new Vector4(_directionalLightColor, 1f),
+                AmbientLightColor = new Vector4(_cellLighting.Ambient, 1f),
+                DirectionalLightColor = new Vector4(_cellLighting.Directional, 1f),
                 PointLightCount = new Vector4(selectedLights.Length, 0f, 0f, 0f)
             };
 
-            for (int i = 0; i < _ambientLightCube.Length; i++)
+            for (var i = 0; i < _cellLighting.AmbientCube.Length; i++)
             {
-                int offset = i * 4;
-                constants.AmbientLightCube[offset] = _ambientLightCube[i].X;
-                constants.AmbientLightCube[offset + 1] = _ambientLightCube[i].Y;
-                constants.AmbientLightCube[offset + 2] = _ambientLightCube[i].Z;
+                var offset = i * 4;
+                constants.AmbientLightCube[offset] = _cellLighting.AmbientCube[i].X;
+                constants.AmbientLightCube[offset + 1] = _cellLighting.AmbientCube[i].Y;
+                constants.AmbientLightCube[offset + 2] = _cellLighting.AmbientCube[i].Z;
                 constants.AmbientLightCube[offset + 3] = 1f;
             }
 
-            for (int i = 0; i < selectedLights.Length; i++)
+            for (var i = 0; i < selectedLights.Length; i++)
             {
                 var light = selectedLights[i];
-                int offset = i * 4;
+                var offset = i * 4;
                 constants.PointLightPositionRadius[offset] = light.Position.X;
                 constants.PointLightPositionRadius[offset + 1] = light.Position.Y;
                 constants.PointLightPositionRadius[offset + 2] = light.Position.Z;
@@ -1458,86 +1237,6 @@ public sealed class MainRenderer : IDisposable
         }
     }
 
-    private void ApplyCellLighting(ICellGetter cell, IGameEnvironment env)
-    {
-        _ambientLightColor = new Vector3(0.25f);
-        _directionalLightColor = new Vector3(1f, 0.95f, 0.9f);
-        _lightDirection = Vector3.Normalize(new Vector3(-0.4f, 0.7f, 1f));
-        Array.Fill(_ambientLightCube, _ambientLightColor);
-
-        var lighting = cell.Lighting;
-        ILightingTemplateGetter? template = null;
-        if (cell.LightingTemplate.TryResolve(env.LinkCache, out var resolvedTemplate))
-            template = resolvedTemplate;
-
-        if (lighting is null && template is null)
-            return;
-
-        bool inheritAmbient = lighting is null ||
-            (lighting.Inherits & CellLighting.Inherit.AmbientColor) != 0;
-        bool inheritDirectionalColor = lighting is null ||
-            (lighting.Inherits & CellLighting.Inherit.DirectionalColor) != 0;
-        bool inheritDirection = lighting is null ||
-            (lighting.Inherits & CellLighting.Inherit.DirectionalRotation) != 0;
-
-        DrawingColor ambientColor = inheritAmbient && template is not null
-            ? template.AmbientColor
-            : lighting?.AmbientColor ?? template?.AmbientColor ?? DrawingColor.FromArgb(64, 64, 64);
-        DrawingColor directionalColor = inheritDirectionalColor && template is not null
-            ? template.DirectionalColor
-            : lighting?.DirectionalColor ?? template?.DirectionalColor ?? DrawingColor.White;
-
-        int directionXY = inheritDirection && template is not null
-            ? template.DirectionalRotationXY
-            : lighting?.DirectionalRotationXY ?? template?.DirectionalRotationXY ?? 0;
-        int directionZ = inheritDirection && template is not null
-            ? template.DirectionalRotationZ
-            : lighting?.DirectionalRotationZ ?? template?.DirectionalRotationZ ?? 0;
-
-        _ambientLightColor = ToLinearRgb(ambientColor);
-        _directionalLightColor = ToLinearRgb(directionalColor);
-
-        var templateAmbientColors = template?.DirectionalAmbientColors ?? template?.AmbientColors;
-        var ambientColors = inheritAmbient && templateAmbientColors is not null
-            ? templateAmbientColors
-            : lighting?.AmbientColors ?? templateAmbientColors;
-        SetAmbientLightCube(ambientColors, _ambientLightColor);
-
-        // The directional rotations are azimuth and elevation in degrees.
-        float azimuth = directionXY * (MathF.PI / 180f);
-        float elevation = directionZ * (MathF.PI / 180f);
-        _lightDirection = Vector3.Normalize(new Vector3(
-            MathF.Cos(azimuth) * MathF.Cos(elevation),
-            MathF.Sin(azimuth) * MathF.Cos(elevation),
-            MathF.Sin(elevation)));
-
-        _log.LogDebug(
-            "Cell lighting: ambient={Ambient}, directional={Directional}, rotation=({RotationXY}, {RotationZ})",
-            _ambientLightColor, _directionalLightColor, directionXY, directionZ);
-    }
-
-    private void SetAmbientLightCube(IAmbientColorsGetter? colors, Vector3 fallback)
-    {
-        if (colors is null)
-        {
-            Array.Fill(_ambientLightCube, fallback);
-            return;
-        }
-
-        float scale = MathF.Max(colors.Scale, 0f);
-        _ambientLightCube[0] = ToLinearRgb(colors.DirectionalXPlus) * scale;
-        _ambientLightCube[1] = ToLinearRgb(colors.DirectionalXMinus) * scale;
-        _ambientLightCube[2] = ToLinearRgb(colors.DirectionalYPlus) * scale;
-        _ambientLightCube[3] = ToLinearRgb(colors.DirectionalYMinus) * scale;
-        _ambientLightCube[4] = ToLinearRgb(colors.DirectionalZPlus) * scale;
-        _ambientLightCube[5] = ToLinearRgb(colors.DirectionalZMinus) * scale;
-    }
-
-    private static Vector3 ToLinearRgb(DrawingColor color) => new(
-        SrgbToLinear(color.R / 255f),
-        SrgbToLinear(color.G / 255f),
-        SrgbToLinear(color.B / 255f));
-
     private static Vector3 ToLinearRgb(NiflySharp.Structs.Color3 color) => new(
         MathF.Max(color.R, 0f),
         MathF.Max(color.G, 0f),
@@ -1548,9 +1247,11 @@ public sealed class MainRenderer : IDisposable
         MathF.Max(color.G, 0f),
         MathF.Max(color.B, 0f));
 
+    private static Vector3 ToLinearRgb(System.Drawing.Color color) => new(
+        SrgbToLinear(color.R / 255f), SrgbToLinear(color.G / 255f), SrgbToLinear(color.B / 255f));
+
     private static float SrgbToLinear(float value) => value <= 0.04045f
-        ? value / 12.92f
-        : MathF.Pow((value + 0.055f) / 1.055f, 2.4f);
+        ? value / 12.92f : MathF.Pow((value + 0.055f) / 1.055f, 2.4f);
 
     private void CreateRenderTargets(uint width, uint height)
     {
@@ -1577,18 +1278,6 @@ public sealed class MainRenderer : IDisposable
 
     private static bool IsFinite(Vector3 v) =>
         float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
-
-    private static Vector3 TransformPoint(SceneObject obj, Vector3 point)
-    {
-        // Skyrim REFR rotations are clockwise radians. System.Numerics uses
-        // counterclockwise rotations and row-vector matrix composition.
-        Matrix4x4 rotation =
-            Matrix4x4.CreateRotationZ(-obj.Rotation.Z) *
-            Matrix4x4.CreateRotationY(-obj.Rotation.Y) *
-            Matrix4x4.CreateRotationX(-obj.Rotation.X);
-        Vector3 nifPoint = Vector3.Transform(point, obj.NifTransform);
-        return Vector3.Transform(nifPoint * obj.Scale, rotation) + obj.Position;
-    }
 
     private static Matrix4x4 CreateNifTransform(Vector3 translation, NiflySharp.Structs.Matrix33 rotation, float scale)
     {

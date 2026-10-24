@@ -32,7 +32,7 @@ public class CachedBSAFileProvider(ILogger<MainRenderer> _log, long maxCacheByte
 
     private Stream? GetFileFromAnyCore(string relativePath)
     {
-        string normalizedPath = NormalizePath(relativePath);
+        var normalizedPath = NormalizePath(relativePath);
         if (_fileCache.TryGetValue(normalizedPath, out var cached))
         {
             _fileCache[normalizedPath] = (cached.Data, DateTime.UtcNow);
@@ -60,7 +60,7 @@ public class CachedBSAFileProvider(ILogger<MainRenderer> _log, long maxCacheByte
 
     private Stream? GetFileFromAnyByFileNameCore(string fileName)
     {
-        string requestedName = Path.GetFileName(NormalizePath(fileName));
+        var requestedName = Path.GetFileName(NormalizePath(fileName));
         if (string.IsNullOrWhiteSpace(requestedName))
             return null;
 
@@ -72,7 +72,7 @@ public class CachedBSAFileProvider(ILogger<MainRenderer> _log, long maxCacheByte
             if (archiveFile is null)
                 continue;
 
-            string actualPath = NormalizePath(archiveFile.Path);
+            var actualPath = NormalizePath(archiveFile.Path);
             _log.LogDebug(
                 "Resolved archive filename {FileName} to {ArchivePath} in {Archive}",
                 requestedName, actualPath, archivePath);
@@ -96,7 +96,7 @@ public class CachedBSAFileProvider(ILogger<MainRenderer> _log, long maxCacheByte
             _readerCache[archivePath] = reader;
         }
 
-        string normalizedPath = NormalizePath(relativePath);
+        var normalizedPath = NormalizePath(relativePath);
         var maybeFile = reader.Files.FirstOrDefault(f =>
             NormalizePath(f.Path).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
         if (maybeFile is not null)
@@ -146,7 +146,7 @@ public class CachedBSAFileProvider(ILogger<MainRenderer> _log, long maxCacheByte
         {
             // Find the least recently accessed file
             string? leastAccessedKey = null;
-            DateTime leastAccessTime = DateTime.MaxValue;
+            var leastAccessTime = DateTime.MaxValue;
 
             foreach (var (key, value) in _fileCache)
             {
