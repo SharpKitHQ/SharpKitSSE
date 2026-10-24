@@ -185,23 +185,36 @@ Build the `SharpKit/SharpKit.csproj` project with `dotnet build`
 
 ## FAQ
 
-Q: Why is this WPF and not (Avalonia/UNO Platform/WindowsForms/other)?
- : **A:** Because Skyrim is a Window-only game, and as much as I love linux, some of the features (especially the render window)
-   are easier to implement and integrate in WPF. **The app should run reasonably well in Wine/Proton**
+**Q:** Why is this WPF and not (Avalonia/UNO Platform/WindowsForms/other)?
 
-Q: Does/Will this support XYZ?
- : **A:** Check the [Roadmap](#roadmap). If the roadmap is missing an existing Creation Kit feature, please open a PR to add it.
-   If you'd like to request a completely new feature, please open an issue.
+**A:** Because Skyrim is a Window-only game, and as much as I love linux, some of the features (especially the render window)
+are easier to implement and integrate in WPF. **The app should run reasonably well in Wine/Proton**
 
-Q: What about Fallout, Starfield, Oblivion, TES VI?
- : **A:** When the Skyrim SE version is done-ish, we can start trying to port this to other games. When TES VI comes out,
-   it will likely become priority #1, especially if Bethesda is as slow with releasing the official CK as usual.
+---
 
-Q: What about OldRim support?
- : **A:** It's almost 2027, please let OldRim die in peace.
+**Q:** Does/Will this support XYZ?
 
-Q: Some other question
- : **A:** If you have any questions, please create an issue or reach out on [Element](https://matrix.to/#/#sharpkitsse-dev:matrix.org).
+**A:** Check the [Roadmap](#roadmap). If the roadmap is missing an existing Creation Kit feature, please open a PR to add it.
+If you'd like to request a completely new feature, please open an issue.
+
+---
+
+**Q:** What about Fallout, Starfield, Oblivion, TES VI?
+
+**A:** When the Skyrim SE version is done-ish, we can start trying to port this to other games. When TES VI comes out,
+it will likely become priority #1, especially if Bethesda is as slow with releasing the official CK as usual.
+
+---
+
+**Q:** What about OldRim support?
+
+**A:** It's almost 2027, please let OldRim die in peace.
+
+---
+
+**Q:** Some other question
+
+**A:** If you have any questions, please create an issue or reach out on [Element](https://matrix.to/#/#sharpkitsse-dev:matrix.org).
 
 ## AI Disclaimer
 
