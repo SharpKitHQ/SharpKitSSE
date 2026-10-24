@@ -53,6 +53,8 @@ public sealed class TriangleRenderer : IDisposable
 
     private bool _initialized;
     private bool _disposed;
+    private bool _bulkLoading;
+    private readonly object _sceneObjectsLock = new();
     private string? _dataFolderPath;
 
     private uint _indexCount;
@@ -322,64 +324,62 @@ public sealed class TriangleRenderer : IDisposable
         _log.LogInformation("Loading cell {Name}", cell.Name?.String);
         ApplyCellLighting(cell, env);
 
-        var allGetters = cell.Temporary.Concat(cell.Persistent);
-        
-        foreach (var p in allGetters)
+        var loadJobs = new List<Action>();
+        foreach (var p in cell.Temporary.Concat(cell.Persistent))
         {
-            
-            if(p is IPlacedObjectGetter po) 
+            if (p is not IPlacedObjectGetter po || !po.Base.TryResolve(env.LinkCache, out var b))
+                continue;
+
+            if (b is ILightGetter light && light.Radius > 0)
             {
-                if(po.Base.TryResolve(env.LinkCache, out var b))
-                {
-                    if (b is ILightGetter light && light.Radius > 0)
-                    {
-                        var lightPosition = po.Placement?.Position;
-                        _placedLights.Add(new PlacedPointLight(
-                            new Vector3(lightPosition?.X ?? 0f, lightPosition?.Y ?? 0f, lightPosition?.Z ?? 0f),
-                            ToLinearRgb(light.Color),
-                            light.Radius,
-                            MathF.Max(light.FalloffExponent, 0.1f)));
-                    }
+                var lightPosition = po.Placement?.Position;
+                _placedLights.Add(new PlacedPointLight(
+                    new Vector3(lightPosition?.X ?? 0f, lightPosition?.Y ?? 0f, lightPosition?.Z ?? 0f),
+                    ToLinearRgb(light.Color), light.Radius, MathF.Max(light.FalloffExponent, 0.1f)));
+            }
 
-                    var placement = po.Placement;
-                    var position = new Vector3(
-                        placement?.Position.X ?? 0,
-                        placement?.Position.Y ?? 0,
-                        placement?.Position.Z ?? 0);
-                    var rotation = new Vector3(
-                        placement?.Rotation.X ?? 0,
-                        placement?.Rotation.Y ?? 0,
-                        placement?.Rotation.Z ?? 0);
-
-                    if (b is ILightGetter placedLight)
-                    {
-                        string lightModelPath = placedLight.Model?.File.GivenPath ?? string.Empty;
-                        if (!string.IsNullOrWhiteSpace(lightModelPath) && !IsLightMarkerModel(lightModelPath))
-                            LoadModelAsset(lightModelPath, position, rotation, po.Scale ?? 1f, env, false, p);
-
-                        LoadLightMarker(placedLight, position, rotation, env);
-                        continue;
-                    }
-
-                    if (b is IModeledGetter stat)
-                    {
-                        _log.LogInformation("Found static {ID}", b.EditorID);
-                        LoadModelAsset(stat.Model?.File.GivenPath ?? string.Empty,
-                            position, rotation, po.Scale ?? 1f, env, IsXMarkerEditorId(b.EditorID), p);
-                    }
-                }
+            var placement = po.Placement;
+            var position = new Vector3(placement?.Position.X ?? 0, placement?.Position.Y ?? 0, placement?.Position.Z ?? 0);
+            var rotation = new Vector3(placement?.Rotation.X ?? 0, placement?.Rotation.Y ?? 0, placement?.Rotation.Z ?? 0);
+            if (b is ILightGetter placedLight)
+            {
+                string lightModelPath = placedLight.Model?.File.GivenPath ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(lightModelPath))
+                    loadJobs.Add(() => LoadModelAsset(lightModelPath, position, rotation, po.Scale ?? 1f, env, false, p));
+                loadJobs.Add(() => LoadLightMarker(placedLight, position, rotation, env));
+            }
+            else if (b is IModeledGetter stat)
+            {
+                string modelPath = stat.Model?.File.GivenPath ?? string.Empty;
+                bool isXMarker = IsXMarkerEditorId(b.EditorID);
+                float scale = po.Scale ?? 1f;
+                loadJobs.Add(() => LoadModelAsset(modelPath, position, rotation, scale, env, isXMarker, p));
             }
         }
 
-        // Center the camera on all loaded models after the cell is fully loaded.
-        CenterCamera();
-        if (_sceneObjects.Count == 0)
-            Render();
-    }
+        _bulkLoading = true;
+        try
+        {
+            Parallel.ForEach(loadJobs, new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            }, job => job());
+        }
+        finally
+        {
+            _bulkLoading = false;
+        }
 
-    private static bool IsLightMarkerModel(string modelPath) =>
-        Path.GetFileName(modelPath.Replace('\\', '/'))
-            .StartsWith("marker_", StringComparison.OrdinalIgnoreCase);
+        if (_sceneObjects.Count > 0)
+        {
+            UploadModelMeshes();
+            CenterCamera();
+        }
+        else
+        {
+            Render();
+        }
+    }
 
     private static bool IsXMarkerModel(string modelPath) =>
         Path.GetFileName(modelPath.Replace('\\', '/'))
@@ -487,10 +487,6 @@ public sealed class TriangleRenderer : IDisposable
             LoadModel(filenameMatch, position, combinedRotation, markerScale, false, markerTint, null);
             return;
         }
-
-        _log.LogDebug(
-            "Light marker mesh {MarkerPath} was not found (tried {ArchiveCandidates} and filename lookup)",
-            markerPath, archiveCandidates);
     }
 
     public void LoadModel(string path, Vector3 position, IPlacedGetter? objectRef)
@@ -743,7 +739,8 @@ public sealed class TriangleRenderer : IDisposable
             if (obj.ModelTris.Count > 0)
             {
                 renderableTriangleCount += obj.ModelTris.Count;
-                _sceneObjects.Add(obj);
+                lock (_sceneObjectsLock)
+                    _sceneObjects.Add(obj);
             }
         }
 
@@ -754,14 +751,18 @@ public sealed class TriangleRenderer : IDisposable
                 $"Shapes={shapeCount}, Vertices={sourceVertexCount}, " +
                 $"SourceTriangles={sourceTriangleCount}.");
         }
-        UploadModelMeshes();
-        CenterCamera();
+        if (!_bulkLoading)
+        {
+            UploadModelMeshes();
+            CenterCamera();
+        }
 
-        _log.LogInformation(
+        _log.LogTrace(
             "Loaded NIF: {Shapes} shapes, {Vertices} source vertices, {Triangles} triangles.",
-            shapeCount, sourceVertexCount, _indexCount / 3);
+            shapeCount, sourceVertexCount, renderableTriangleCount);
 
-        Render();
+        if (!_bulkLoading)
+            Render();
     }
 
     /// <summary>

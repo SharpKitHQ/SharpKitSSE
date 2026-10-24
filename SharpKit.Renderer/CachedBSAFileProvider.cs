@@ -7,6 +7,7 @@ namespace SharpKit.Renderer;
 public class CachedBSAFileProvider(ILogger<TriangleRenderer> _log, long maxCacheBytes = 2L * 1024 * 1024 * 1024)
 {
     private readonly Dictionary<string, IArchiveReader> _readerCache = [];
+    private readonly object _sync = new();
     private readonly long _maxCacheBytes = maxCacheBytes;
 
     // In-memory file cache: key is the relative path, value is (byte[], lastAccessTime)
@@ -24,6 +25,12 @@ public class CachedBSAFileProvider(ILogger<TriangleRenderer> _log, long maxCache
     }
 
     public Stream? GetFileFromAny(string relativePath)
+    {
+        lock (_sync)
+            return GetFileFromAnyCore(relativePath);
+    }
+
+    private Stream? GetFileFromAnyCore(string relativePath)
     {
         string normalizedPath = NormalizePath(relativePath);
         if (_fileCache.TryGetValue(normalizedPath, out var cached))
@@ -46,6 +53,12 @@ public class CachedBSAFileProvider(ILogger<TriangleRenderer> _log, long maxCache
     }
 
     public Stream? GetFileFromAnyByFileName(string fileName)
+    {
+        lock (_sync)
+            return GetFileFromAnyByFileNameCore(fileName);
+    }
+
+    private Stream? GetFileFromAnyByFileNameCore(string fileName)
     {
         string requestedName = Path.GetFileName(NormalizePath(fileName));
         if (string.IsNullOrWhiteSpace(requestedName))
