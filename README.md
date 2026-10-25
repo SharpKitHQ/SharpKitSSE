@@ -4,6 +4,10 @@
 [![Download On NexusMods](https://img.shields.io/badge/Download%20On-NexusMods-orange)](https://www.nexusmods.com/skyrimspecialedition/mods/196677)
 [![Latest Release](https://img.shields.io/github/v/release/SharpKitHQ/SharpKitSSE)](https://github.com/SharpKitHQ/SharpKitSSE/releases)
 
+---
+
+[![Release](https://github.com/SharpKitHQ/SharpKitSSE/actions/workflows/release.yml/badge.svg)](https://github.com/SharpKitHQ/SharpKitSSE/actions/workflows/release.yml)
+
 # SharpKit
 
 SharpKit is an experimental open-source reimplementation of the [Bethesda CreationKit](https://en.uesp.net/wiki/Skyrim_Mod:Creation_Kit).
