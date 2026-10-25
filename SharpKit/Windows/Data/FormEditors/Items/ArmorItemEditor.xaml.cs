@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Mutagen.Bethesda;
@@ -33,6 +34,8 @@ public partial class ArmorItemEditor : Window
     public Lazy<List<IRaceGetter>?> Races { get; private init; } = PluginFileManager.Races;
 
     public ArmorType[] ArmorTypes { get; private init; } = Enum.GetValues<ArmorType>();
+
+    public ObservableCollection<IKeywordGetter> Keywords { get; set; }
     
     public uint BipedFlags { get; set; }
     
@@ -62,13 +65,13 @@ public partial class ArmorItemEditor : Window
 
         if (armor.Race.TryResolve(pfm.GetEnv().LinkCache, out var r))
             Race = r;
-        
-        // armor.BodyTemplate.ArmorType
 
         IsPlayable = !armor.MajorFlags.HasFlag(Armor.MajorFlag.NonPlayable);
         if(armor.BodyTemplate?.FirstPersonFlags is not null)
             BipedFlags = (uint)armor.BodyTemplate?.FirstPersonFlags!;
 
+        Keywords = [.. armor.Keywords?.Select(k => k.Resolve(pfm.GetEnv().LinkCache)).ToList() ?? []];
+        
         DataContext = this;
     }
 }

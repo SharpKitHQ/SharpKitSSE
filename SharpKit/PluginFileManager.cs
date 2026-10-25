@@ -40,6 +40,8 @@ public class PluginFileManager : IDisposable
     public static Lazy<List<ICellBlockGetter>?> Cells { get; set; } = new(() => null);
 
     public static Lazy<List<IWorldspaceGetter>?> Worldspaces { get; set; } = new(() => null);
+
+    public static Lazy<List<IKeywordGetter>?> Keywords { get; set; } = new(() => null);
     
     public PluginFileManager(ILogger<PluginFileManager> log)
     {
@@ -51,6 +53,7 @@ public class PluginFileManager : IDisposable
         Races = new(() => _dependencies?.SelectMany(d => d.Races).ToList() ?? []);
         Cells = new(() => _dependencies?.SelectMany(d => d.Cells).ToList() ?? []);
         Worldspaces = new(() => _dependencies?.SelectMany(d => d.Worldspaces).ToList() ?? []);
+        Keywords = new(() => _dependencies?.SelectMany(d => d.Keywords).ToList() ?? []);
         
         _log = log;
         _env = GameEnvironment.Typical.Skyrim(SkyrimRelease.SkyrimSE);
