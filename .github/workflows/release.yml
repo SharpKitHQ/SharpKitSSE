@@ -54,10 +54,21 @@ jobs:
           Compress-Archive -Path (Join-Path $publishDirectory '*') -DestinationPath $archivePath -Force
           "archive=$env:ARCHIVE_NAME" >> $env:GITHUB_OUTPUT
 
+      - name: Read release description from tagged commit
+        shell: pwsh
+        run: |
+          $commitMessage = git log -1 --format=%B $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to read the tagged commit message.'
+          }
+
+          Set-Content -LiteralPath release-notes.md -Value $commitMessage -Encoding utf8NoBOM
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: ${{ steps.version.outputs.tag }}
+          body_path: release-notes.md
           files: ${{ steps.package.outputs.archive }}
           fail_on_unmatched_files: true
