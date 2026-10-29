@@ -5,7 +5,6 @@ using System.Windows.Media;
 using Microsoft.Extensions.DependencyInjection;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Skyrim;
-using SharpKit.Reflection;
 using SharpKit.Util;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
@@ -13,24 +12,62 @@ using Color = System.Windows.Media.Color;
 
 namespace SharpKit.Windows.Data.FormEditors.Miscellaneous;
 
-[RecordEditor(typeof(Keyword))]
-public partial class KeywordEditor : DialogWindow, INotifyPropertyChanged
+public partial class KeywordEditor : RecordEditorWindow<IKeywordGetter>, INotifyPropertyChanged
 {
-    public IKeywordGetter? Keyword { get; private set; }
-    
-    public string ID { get; set; } = "";
+    public IKeywordGetter? Keyword
+    {
+        get;
+        private set
+        {
+            field = value;
+            OnPropertyChanged();
+        }
+    }
 
-    public bool Result { get; set; } = false;
+    public string ID
+    {
+        get;
+        set
+        {
+            field = value;
+            OnPropertyChanged();
+        }
+    } = "";
     
     public Color Color
     {
         get;
         set
         {
+            if (field == value)
+                return;
+
             field = value;
             ColorBrush = new SolidColorBrush(value);
-            OnPropertyChanged(nameof(Color));
+
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(R));
+            OnPropertyChanged(nameof(G));
+            OnPropertyChanged(nameof(B));
         }
+    } = Colors.Gray;
+
+    public byte R
+    {
+        get => Color.R;
+        set => Color = Color.FromArgb(Color.A, value, Color.G, Color.B);
+    }
+
+    public byte G
+    {
+        get => Color.G;
+        set => Color = Color.FromArgb(Color.A, Color.R, value, Color.B);
+    }
+
+    public byte B
+    {
+        get => Color.B;
+        set => Color = Color.FromArgb(Color.A, Color.R, Color.G, value);
     }
 
     private Brush _colorBrush = Brushes.Gray;
@@ -68,20 +105,20 @@ public partial class KeywordEditor : DialogWindow, INotifyPropertyChanged
 
     private void OkButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (Keyword is null)
+        Keyword ??= new Keyword(_pfm.GetActiveMod()!);
+        
+        if (Keyword is Keyword k)
         {
-            Keyword = _pfm.GetActiveMod()?.Keywords.AddNew(ID);
-            if (Keyword is Keyword k)
-            {
-                k.Color = System.Drawing.Color.FromArgb(Color.A, Color.R, Color.G, Color.B);
-                DialogResult = true;
-                Close();
-                return;
-            }
+            k.EditorID = ID;
+            k.Color = System.Drawing.Color.FromArgb(Color.A, Color.R, Color.G, Color.B);
+            ActionResult = true;
+            Item = k;
+            Close();
+            return;
         }
         
-        DialogResult = false;
-        
+        ActionResult = false;
+        Item = null;
         Close();
     }
 
@@ -107,7 +144,8 @@ public partial class KeywordEditor : DialogWindow, INotifyPropertyChanged
 
     private void CancelBtn_OnClick(object sender, RoutedEventArgs e)
     {
-        DialogResult = false;
+        ActionResult = false;
+        Item = null;
         Close();
     }
 }

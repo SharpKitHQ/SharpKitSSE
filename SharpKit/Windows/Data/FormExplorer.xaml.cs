@@ -43,12 +43,12 @@ public partial class FormExplorer : Window
         };
         
         _vm.Items.Add(new TreeItem("Actors", null, [
-            new TreeItem("Actor", typeof(Ammunition), null, mod => mod.SelectMany(m => m.Npcs)),
-            new TreeItem("Actor Action", typeof(Ammunition), null, mod => mod.SelectMany(m => m.Actions)),
-            new TreeItem("Body Part Data", typeof(Ammunition), null, mod => mod.SelectMany(m => m.BodyParts)),
-            new TreeItem("Leveled Character", typeof(Ammunition), null, mod => mod.SelectMany(m => m.LeveledNpcs)),
-            new TreeItem("Perk", typeof(Ammunition), null, mod => mod.SelectMany(m => m.Perks)),
-            new TreeItem("Talking Activator", typeof(Ammunition), null, mod => mod.SelectMany(m => m.TalkingActivators)),
+            new TreeItem("Actor", typeof(INpcGetter), null, mod => mod.SelectMany(m => m.Npcs)),
+            new TreeItem("Actor Action", typeof(IActionRecord), null, mod => mod.SelectMany(m => m.Actions)),
+            new TreeItem("Body Part Data", typeof(IBodyPartData), null, mod => mod.SelectMany(m => m.BodyParts)),
+            new TreeItem("Leveled Character", typeof(ILeveledNpc), null, mod => mod.SelectMany(m => m.LeveledNpcs)),
+            new TreeItem("Perk", typeof(IPerk), null, mod => mod.SelectMany(m => m.Perks)),
+            new TreeItem("Talking Activator", typeof(ITalkingActivator), null, mod => mod.SelectMany(m => m.TalkingActivators)),
         ]));
         
         _vm.Items.Add(new TreeItem("Audio", null, [
@@ -111,7 +111,7 @@ public partial class FormExplorer : Window
             new TreeItem("Form List", typeof(FormList), null, mod => mod.SelectMany(m => m.FormLists)),
             new TreeItem("Global", typeof(Global), null, mod => mod.SelectMany(m => m.Globals)),
             new TreeItem("Idle marker", typeof(IdleMarker), null, mod => mod.SelectMany(m => m.IdleMarkers)),
-            new TreeItem("Keyword", typeof(Keyword), null, mod => mod.SelectMany(m => m.Keywords)),
+            new TreeItem("Keyword", typeof(IKeyword), null, mod => mod.SelectMany(m => m.Keywords)),
             new TreeItem("Land Texture", typeof(LandscapeTexture), null, mod => mod.SelectMany(m => m.LandscapeTextures)),
             new TreeItem("Load Screen", typeof(LoadScreen), null, mod => mod.SelectMany(m => m.LoadScreens)),
             new TreeItem("Material Object", typeof(MaterialObject), null, mod => mod.SelectMany(m => m.MaterialObjects)),
@@ -221,15 +221,22 @@ public partial class FormExplorer : Window
         if (_currentFormType.RecordType is null || item.Instance is null)
             return;
 
-        var editorWindow = _edp.GetEditorWindow(_currentFormType.RecordType, item.Instance);
-        if (editorWindow is null)
+        var manager = _edp.GetRecordManager(_currentFormType.RecordType);
+        if (manager is null)
         {
-            MessageBox.Show("Editing this form type is not supported yet.", "Not Implemented", MessageBoxButton.OK, MessageBoxImage.Asterisk);   
+            MessageBox.Show("Editing this form type is not supported yet.", "Not Implemented", MessageBoxButton.OK, MessageBoxImage.Asterisk);
         }
         else
         {
-            editorWindow.Owner = this;
-            editorWindow.Show();
+            var deps = _pfm.GetDependencies();
+            if (_currentFormType.GetRecords is null || deps is null) 
+                return;
+            
+            var updatedInstance = _currentFormType.GetRecords(deps).FirstOrDefault(f => f.FormKey == item.Instance.FormKey);
+            if (updatedInstance is null)
+                return;
+            
+            manager.ShowForEdit(updatedInstance);
         }
     }
 }

@@ -1,12 +1,14 @@
-<Window x:Class="SharpKit.Windows.Data.FormEditors.Items.ArmorItemEditor"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:misc="clr-namespace:SharpKit.Controls.Data.Misc"
-        xmlns:converters="clr-namespace:SharpKit.Converters"
-        mc:Ignorable="d"
-        Title="ArmorItemEditor" SizeToContent="Height" Width="1200">
+<util:RecordEditorWindow x:TypeArguments="skyrim:IArmorGetter" x:Class="SharpKit.Windows.Data.FormEditors.Items.ArmorItemEditor"
+                         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                         xmlns:misc="clr-namespace:SharpKit.Controls.Data.Misc"
+                         xmlns:converters="clr-namespace:SharpKit.Converters"
+                         xmlns:util="clr-namespace:SharpKit.Util"
+                         xmlns:skyrim="clr-namespace:Mutagen.Bethesda.Skyrim;assembly=Mutagen.Bethesda.Skyrim"
+                         mc:Ignorable="d"
+                         Title="ArmorItemEditor" SizeToContent="Height" Width="1200">
     
     <Window.Resources>
         <converters:TranslatedStringConverter x:Key="TransStringConv" />
@@ -184,4 +186,4 @@
             <misc:PapyrusScriptList Grid.Row="4" Margin="0, 5, 0, 0" />
         </Grid>
     </Grid>
-</Window>
+</util:RecordEditorWindow>

@@ -4,13 +4,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Skyrim;
 using SharpKit.Reflection;
+using SharpKit.Util;
 using Armor = Mutagen.Bethesda.Skyrim.Armor;
 using IArmorGetter = Mutagen.Bethesda.Skyrim.IArmorGetter;
 
 namespace SharpKit.Windows.Data.FormEditors.Items;
 
 [RecordEditor(typeof(Armor))]
-public partial class ArmorItemEditor : Window
+public partial class ArmorItemEditor : RecordEditorWindow<IArmorGetter>
 {
     public Armor LocalCopy { get; set; }
     
