@@ -128,8 +128,8 @@
                 <StackPanel Orientation="Vertical" Margin="0, 5, 0, 0">
                     <Label>World Model</Label>
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBox Margin="0, 0, 5, 0" />
-                        <Button Grid.Column="1">Edit</Button>
+                        <TextBox Margin="0, 0, 5, 0" Text="{Binding WorldModelMale}" IsReadOnly="True" />
+                        <Button Grid.Column="1" Click="WorldModel_Male_OnClick">Edit</Button>
                     </Grid>
                     
                     <Label>Icon Image</Label>
@@ -152,7 +152,7 @@
                 <StackPanel Orientation="Vertical" Margin="0, 5, 0, 0">
                     <Label>World Model</Label>
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBox Margin="0, 0, 5, 0" />
+                        <TextBox Margin="0, 0, 5, 0" Text="{Binding WorldModelFemale}" IsReadOnly="True" />
                         <Button Grid.Column="1">Edit</Button>
                     </Grid>
                     

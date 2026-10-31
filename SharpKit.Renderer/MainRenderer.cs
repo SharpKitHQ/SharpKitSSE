@@ -1,5 +1,7 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using BCnEncoder.Decoder;
+using BCnEncoder.Shared.ImageFiles;
 using Microsoft.Extensions.Logging;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Environments;
@@ -21,6 +23,7 @@ public sealed class MainRenderer : IDisposable
 {
     private readonly ILogger<MainRenderer> _log;
     private readonly CachedBSAFileProvider _bsaFileProvider;
+    private readonly bool _previewMode;
 
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _context;
@@ -43,6 +46,7 @@ public sealed class MainRenderer : IDisposable
     private ID3D11RasterizerState? _rasterizerState;
     private ID3D11SamplerState? _diffuseSampler;
     private readonly Dictionary<string, (ID3D11Texture2D Texture, ID3D11ShaderResourceView View)> _textureCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (ID3D11Texture2D Texture, ID3D11ShaderResourceView View)> _environmentTextureCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _unavailableTexturePaths = new(StringComparer.OrdinalIgnoreCase);
     private ID3D11Texture2D? _whiteTexture;
     private ID3D11ShaderResourceView? _whiteTextureView;
@@ -57,9 +61,11 @@ public sealed class MainRenderer : IDisposable
 
     private uint _indexCount;
     private uint _selectionVertexCount;
+    private uint? _previewGridIndexStart;
+    private bool _showPreviewGrid;
     private uint _width;
     private uint _height;
-    private readonly List<(string TexturePath, string EmissiveTexturePath, Vector4 Tint, Vector4 Specular, Vector4 Emissive, float Glossiness, bool HasEmissiveMap, bool IsTransparent, Vector3 SortCenter, uint Start, uint Count)> _drawRanges = [];
+    private readonly List<(string TexturePath, string EmissiveTexturePath, string EnvironmentMapPath, string EnvironmentMaskPath, Vector4 Tint, Vector4 Specular, Vector4 Emissive, float Glossiness, float EnvironmentMapScale, bool HasEmissiveMap, bool IsTransparent, Vector3 SortCenter, uint Start, uint Count)> _drawRanges = [];
     private Guid? _selectedObjectId;
     
     private readonly OrbitCamera _camera = new();
@@ -83,7 +89,8 @@ public sealed class MainRenderer : IDisposable
         public Vector4 Material;
 
         public Vertex(Vector3 position, Vector3 normal, Vector2 texCoord, Vector4 tint,
-            Vector4 specular, Vector4 emissive, float glossiness, bool hasEmissiveMap)
+            Vector4 specular, Vector4 emissive, float glossiness, bool hasEmissiveMap,
+            bool isGrid = false, float environmentMapScale = 0f)
         {
             Position = position;
             Normal = normal;
@@ -91,7 +98,8 @@ public sealed class MainRenderer : IDisposable
             Tint = tint;
             Specular = specular;
             Emissive = emissive;
-            Material = new Vector4(glossiness, hasEmissiveMap ? 1f : 0f, 0f, 0f);
+            Material = new Vector4(glossiness, hasEmissiveMap ? 1f : 0f,
+                isGrid ? 1f : 0f, environmentMapScale);
         }
     }
 
@@ -114,8 +122,14 @@ public sealed class MainRenderer : IDisposable
         Vector3 Position, Vector3 Color, float Radius, float FalloffExponent);
 
     public MainRenderer(ILogger<MainRenderer> log, string dataDirPath)
+        : this(log, dataDirPath, false)
+    {
+    }
+
+    internal MainRenderer(ILogger<MainRenderer> log, string dataDirPath, bool previewMode)
     {
         _log = log;
+        _previewMode = previewMode;
         _bsaFileProvider = new(_log);
         
         
@@ -246,7 +260,7 @@ public sealed class MainRenderer : IDisposable
             _rasterizerState = _device.CreateRasterizerState(new RasterizerDescription
             {
                 FillMode = FillMode.Solid,
-                CullMode = CullMode.Back,
+                CullMode = _previewMode ? CullMode.None : CullMode.Back,
                 FrontCounterClockwise = true,
                 DepthClipEnable = true
             });
@@ -452,6 +466,75 @@ public sealed class MainRenderer : IDisposable
     public void LoadModel(string path, Vector3 position, IPlacedGetter? objectRef)
         => LoadModel(path, position, Vector3.Zero, 1f, objectRef);
 
+    internal void LoadPreviewModel(
+        string path,
+        string dataFolderPath,
+        IList<ITextureSetGetter?>? textureSetOverrides = null)
+    {
+        if (!_previewMode)
+            throw new InvalidOperationException("Preview models require a preview renderer.");
+
+        _dataFolderPath = dataFolderPath;
+        ClearPreviewModel();
+
+        var normalizedPath = path.Replace('\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar)
+            .TrimStart(Path.DirectorySeparatorChar);
+        if (normalizedPath.StartsWith($"meshes{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            normalizedPath = normalizedPath[("meshes".Length + 1)..];
+        var loosePath = Path.IsPathRooted(path)
+            ? path
+            : Path.Combine(dataFolderPath, "meshes", normalizedPath);
+        if (File.Exists(loosePath))
+        {
+            using var looseStream = File.OpenRead(loosePath);
+            LoadModel(looseStream, Vector3.Zero, Vector3.Zero, 1f, false, Vector4.One, null,
+                textureSetOverrides);
+            return;
+        }
+
+        var archivePath = normalizedPath.Replace(Path.DirectorySeparatorChar, '/');
+        if (!archivePath.StartsWith("meshes/", StringComparison.OrdinalIgnoreCase))
+            archivePath = "meshes/" + archivePath;
+        using var stream = _bsaFileProvider.GetFileFromAny(archivePath)
+            ?? throw new FileNotFoundException("The preview NIF was not found in the Data\\Meshes folder or loaded archives.", path);
+        LoadModel(stream, Vector3.Zero, Vector3.Zero, 1f, false, Vector4.One, null,
+            textureSetOverrides);
+    }
+
+    internal void ClearPreviewModel()
+    {
+        if (!_previewMode)
+            throw new InvalidOperationException("Preview models require a preview renderer.");
+
+        _context?.ClearState();
+        _sceneObjects.Clear();
+        _drawRanges.Clear();
+        _vertexBuffer?.Dispose();
+        _vertexBuffer = null;
+        _indexBuffer?.Dispose();
+        _indexBuffer = null;
+        if (_initialized)
+        {
+            UploadModelMeshes();
+            Render();
+        }
+    }
+
+    internal void SetPreviewGridVisible(bool visible)
+    {
+        if (!_previewMode)
+            throw new InvalidOperationException("The preview grid is only available in the preview renderer.");
+
+        if (_showPreviewGrid == visible)
+            return;
+
+        _showPreviewGrid = visible;
+        Render();
+    }
+
+    internal bool IsPreviewGridVisible => _showPreviewGrid;
+
     public void LoadModel(string path, Vector3 position, Vector3 rotation, float scale, IPlacedGetter? objectRef)
         => LoadModel(path, position, rotation, scale, IsXMarkerModel(path), Vector4.One, objectRef);
 
@@ -477,7 +560,8 @@ public sealed class MainRenderer : IDisposable
         float scale,
         bool isXMarker,
         Vector4 vertexColorMultiplier,
-        IPlacedGetter? objectRef)
+        IPlacedGetter? objectRef,
+        IList<ITextureSetGetter?>? textureSetOverrides = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -519,8 +603,10 @@ public sealed class MainRenderer : IDisposable
             CollectTransforms(rootNode, Matrix4x4.Identity);
 
         var loadedObjectId = Guid.NewGuid();
+        var shapeIndex = 0;
         foreach (var shape in nif.GetShapes())
         {
+            var currentShapeIndex = shapeIndex++;
             shapeCount++;
             var obj = new SceneObject
             {
@@ -541,7 +627,10 @@ public sealed class MainRenderer : IDisposable
                 Specular = new Vector4(1f, 1f, 1f, 0.04f),
                 Emissive = Vector4.Zero,
                 EmissiveTexturePath = string.Empty,
+                EnvironmentMapPath = string.Empty,
+                EnvironmentMaskPath = string.Empty,
                 Glossiness = 32f,
+                EnvironmentMapScale = 0f,
                 ObjectRef = objectRef
             };
 
@@ -597,6 +686,10 @@ public sealed class MainRenderer : IDisposable
                         ? MathF.Max(lightingShader.EmissiveMultiple, 0f)
                         : 0f;
                     obj.Emissive = new Vector4(emissiveColor, emissiveMultiple);
+                    obj.EnvironmentMapScale = lightingShader.HasEnvironmentMapping &&
+                                              float.IsFinite(lightingShader.EnvironmentMapScale)
+                        ? MathF.Max(lightingShader.EnvironmentMapScale, 0f)
+                        : 0f;
                     obj.Glossiness = float.IsFinite(lightingShader.Glossiness)
                         ? Math.Clamp(lightingShader.Glossiness, 1f, 256f)
                         : 32f;
@@ -628,6 +721,10 @@ public sealed class MainRenderer : IDisposable
                         }
                         if (textureSet.Textures.Count >= 3)
                             obj.EmissiveTexturePath = textureSet.Textures[2].Content;
+                        if (textureSet.Textures.Count >= 5)
+                            obj.EnvironmentMapPath = textureSet.Textures[4].Content;
+                        if (textureSet.Textures.Count >= 6)
+                            obj.EnvironmentMaskPath = textureSet.Textures[5].Content;
                     }
 
                 }
@@ -652,7 +749,49 @@ public sealed class MainRenderer : IDisposable
                 triangles = data.Triangles ?? Enumerable.Empty<Triangle>();
             }
 
+            if (textureSetOverrides is not null && currentShapeIndex < textureSetOverrides.Count)
+            {
+                var textureSetOverride = textureSetOverrides[currentShapeIndex];
+                if (textureSetOverride is not null)
+                {
+                    obj.TexturePath = textureSetOverride.Diffuse?.GivenPath ?? string.Empty;
+                    obj.EmissiveTexturePath = textureSetOverride.GlowOrDetailMap?.GivenPath ?? string.Empty;
+                    obj.EnvironmentMapPath = textureSetOverride.Environment?.GivenPath ?? string.Empty;
+                    obj.EnvironmentMaskPath = textureSetOverride.EnvironmentMaskOrSubsurfaceTint?.GivenPath ?? string.Empty;
+                }
+            }
+
             sourceVertexCount += positions.Length;
+            var vertexNormals = new Vector3[positions.Length];
+            foreach (var tri in triangles)
+            {
+                var i0 = tri.V1;
+                var i1 = tri.V2;
+                var i2 = tri.V3;
+                if ((uint)i0 >= (uint)positions.Length ||
+                    (uint)i1 >= (uint)positions.Length ||
+                    (uint)i2 >= (uint)positions.Length)
+                    continue;
+
+                var a = positions[i0];
+                var b = positions[i1];
+                var c = positions[i2];
+                if (!IsFinite(a) || !IsFinite(b) || !IsFinite(c))
+                    continue;
+
+                var weightedNormal = Vector3.Cross(b - a, c - a);
+                if (weightedNormal.LengthSquared() < 1e-12f)
+                    continue;
+
+                vertexNormals[i0] += weightedNormal;
+                vertexNormals[i1] += weightedNormal;
+                vertexNormals[i2] += weightedNormal;
+            }
+            for (var i = 0; i < vertexNormals.Length; i++)
+            {
+                if (vertexNormals[i].LengthSquared() > 1e-12f)
+                    vertexNormals[i] = Vector3.Normalize(vertexNormals[i]);
+            }
 
             foreach (var tri in triangles)
             {
@@ -690,7 +829,12 @@ public sealed class MainRenderer : IDisposable
                     colorA.W = colorB.W = colorC.W = 1f;
                 }
                 obj.IsTransparent |= colorA.W < 0.999f || colorB.W < 0.999f || colorC.W < 0.999f;
-                obj.ModelTris.Add((a, b, c, uvA, uvB, uvC, colorA, colorB, colorC));
+                var fallbackNormal = Vector3.Normalize(cross);
+                var normalA = vertexNormals[i0].LengthSquared() > 1e-12f ? vertexNormals[i0] : fallbackNormal;
+                var normalB = vertexNormals[i1].LengthSquared() > 1e-12f ? vertexNormals[i1] : fallbackNormal;
+                var normalC = vertexNormals[i2].LengthSquared() > 1e-12f ? vertexNormals[i2] : fallbackNormal;
+                obj.ModelTris.Add((a, b, c, uvA, uvB, uvC,
+                    normalA, normalB, normalC, colorA, colorB, colorC));
                 obj.BoundsMin = Vector3.Min(obj.BoundsMin, obj.TransformPoint(a));
                 obj.BoundsMin = Vector3.Min(obj.BoundsMin, obj.TransformPoint(b));
                 obj.BoundsMin = Vector3.Min(obj.BoundsMin, obj.TransformPoint(c));
@@ -812,7 +956,9 @@ public sealed class MainRenderer : IDisposable
         _context!.OMSetRenderTargets(_renderTarget, _depthView);
         _context.RSSetViewport(new Viewport(0, 0, _width, _height));
         _context.ClearRenderTargetView(
-            _renderTarget!, new Color4(0.04f, 0.04f, 0.07f, 1f));
+            _renderTarget!, _previewMode
+                ? new Color4(0.34f, 0.35f, 0.36f, 1f)
+                : new Color4(0.04f, 0.04f, 0.07f, 1f));
         _context.ClearDepthStencilView(
             _depthView!, DepthStencilClearFlags.Depth, 1f, 0);
 
@@ -837,14 +983,18 @@ public sealed class MainRenderer : IDisposable
         {
             UpdateCameraConstants();
             var cameraPosition = _camera.Position;
-            foreach (var range in _drawRanges.Where(range => !range.IsTransparent)
+            foreach (var range in _drawRanges.Where(range => !range.IsTransparent &&
+                                                              (_showPreviewGrid || range.Start != _previewGridIndexStart))
                          .Concat(_drawRanges.Where(range => range.IsTransparent)
+                             .Where(range => _showPreviewGrid || range.Start != _previewGridIndexStart)
                              .OrderByDescending(range => Vector3.DistanceSquared(range.SortCenter, cameraPosition))))
             {
                 _context.OMSetDepthStencilState(
                     range.IsTransparent ? _transparentDepthState : _depthState, 0);
                 SetTexture(range.TexturePath, 0);
                 SetTexture(range.EmissiveTexturePath, 1);
+                SetTexture(range.EnvironmentMaskPath, 2);
+                SetEnvironmentMap(range.EnvironmentMapPath, 3);
                 _context.DrawIndexed(range.Count, range.Start, 0);
             }
 
@@ -882,17 +1032,22 @@ public sealed class MainRenderer : IDisposable
 
     private void UploadModelMeshes()
     {
+        _previewGridIndexStart = null;
         var vertices = new List<Vertex>(_sceneObjects.Select(so => so.ModelTris.Count).Sum() * 3);
         var indices = new List<uint>(_sceneObjects.Select(so => so.ModelTris.Count).Sum() * 3);
 
         var objectsByTexture = _sceneObjects
             .GroupBy(obj => (TexturePath: obj.TexturePath ?? string.Empty,
-                EmissiveTexturePath: obj.EmissiveTexturePath ?? string.Empty, obj.Tint,
+                EmissiveTexturePath: obj.EmissiveTexturePath ?? string.Empty,
+                EnvironmentMapPath: obj.EnvironmentMapPath ?? string.Empty,
+                EnvironmentMaskPath: obj.EnvironmentMaskPath ?? string.Empty, obj.Tint,
                 obj.Specular, obj.Emissive, obj.Glossiness,
+                obj.EnvironmentMapScale,
                 HasEmissiveMap: !string.IsNullOrWhiteSpace(obj.EmissiveTexturePath), obj.IsTransparent))
             .ToList();
-        var drawRanges = new List<(string TexturePath, string EmissiveTexturePath, Vector4 Tint,
-            Vector4 Specular, Vector4 Emissive, float Glossiness, bool HasEmissiveMap,
+        var drawRanges = new List<(string TexturePath, string EmissiveTexturePath, string EnvironmentMapPath,
+            string EnvironmentMaskPath, Vector4 Tint, Vector4 Specular, Vector4 Emissive,
+            float Glossiness, float EnvironmentMapScale, bool HasEmissiveMap,
             bool IsTransparent, Vector3 SortCenter, uint Start, uint Count)>();
         foreach (var obj in objectsByTexture.SelectMany(group => group))
         {
@@ -914,22 +1069,23 @@ public sealed class MainRenderer : IDisposable
                 if (cross.LengthSquared() < 1e-12f)
                     continue;
 
-                var normal = Vector3.Normalize(cross);
-
                 modelRadius = MathF.Max(modelRadius, a.Length());
                 modelRadius = MathF.Max(modelRadius, b.Length());
                 modelRadius = MathF.Max(modelRadius, c.Length());
 
                 var start = (uint)vertices.Count;
-                vertices.Add(new Vertex(a, normal, tri.UvA * obj.UVScale + obj.UVOffset,
+                vertices.Add(new Vertex(a, obj.TransformNormal(tri.NormalA), tri.UvA * obj.UVScale + obj.UVOffset,
                     obj.Tint * obj.VertexColorMultiplier * tri.ColorA,
-                    obj.Specular, obj.Emissive, obj.Glossiness, !string.IsNullOrWhiteSpace(obj.EmissiveTexturePath)));
-                vertices.Add(new Vertex(b, normal, tri.UvB * obj.UVScale + obj.UVOffset,
+                    obj.Specular, obj.Emissive, obj.Glossiness,
+                    !string.IsNullOrWhiteSpace(obj.EmissiveTexturePath), false, obj.EnvironmentMapScale));
+                vertices.Add(new Vertex(b, obj.TransformNormal(tri.NormalB), tri.UvB * obj.UVScale + obj.UVOffset,
                     obj.Tint * obj.VertexColorMultiplier * tri.ColorB,
-                    obj.Specular, obj.Emissive, obj.Glossiness, !string.IsNullOrWhiteSpace(obj.EmissiveTexturePath)));
-                vertices.Add(new Vertex(c, normal, tri.UvC * obj.UVScale + obj.UVOffset,
+                    obj.Specular, obj.Emissive, obj.Glossiness,
+                    !string.IsNullOrWhiteSpace(obj.EmissiveTexturePath), false, obj.EnvironmentMapScale));
+                vertices.Add(new Vertex(c, obj.TransformNormal(tri.NormalC), tri.UvC * obj.UVScale + obj.UVOffset,
                     obj.Tint * obj.VertexColorMultiplier * tri.ColorC,
-                    obj.Specular, obj.Emissive, obj.Glossiness, !string.IsNullOrWhiteSpace(obj.EmissiveTexturePath)));
+                    obj.Specular, obj.Emissive, obj.Glossiness,
+                    !string.IsNullOrWhiteSpace(obj.EmissiveTexturePath), false, obj.EnvironmentMapScale));
 
                 indices.Add(start);
                 indices.Add(start + 1);
@@ -940,7 +1096,8 @@ public sealed class MainRenderer : IDisposable
             if (objectIndexCount > 0)
             {
                 drawRanges.Add((obj.TexturePath ?? string.Empty, obj.EmissiveTexturePath ?? string.Empty,
-                    obj.Tint, obj.Specular, obj.Emissive, obj.Glossiness,
+                    obj.EnvironmentMapPath ?? string.Empty, obj.EnvironmentMaskPath ?? string.Empty,
+                    obj.Tint, obj.Specular, obj.Emissive, obj.Glossiness, obj.EnvironmentMapScale,
                     !string.IsNullOrWhiteSpace(obj.EmissiveTexturePath), obj.IsTransparent,
                     sortPointCount > 0 ? sortCenter / sortPointCount : obj.Position,
                     objectStartIndex, objectIndexCount));
@@ -948,6 +1105,39 @@ public sealed class MainRenderer : IDisposable
 
             _camera.FrameRadius(modelRadius);
 
+        }
+
+        if (_previewMode)
+        {
+            var center = _camera.Target;
+            var floor = _sceneObjects.Count == 0
+                ? 0f
+                : _sceneObjects.Min(obj => obj.BoundsMin.Z)
+                  - MathF.Max((_sceneObjects.Max(obj => obj.BoundsMax.Z) - _sceneObjects.Min(obj => obj.BoundsMin.Z)) * 0.01f, 0.01f)
+                  + 0.002f;
+            var indexStart = (uint)indices.Count;
+            _previewGridIndexStart = indexStart;
+            const float halfSize = 100000f;
+            var first = (uint)vertices.Count;
+            var gridTint = Vector4.One;
+            var gridMaterial = Vector4.Zero;
+            vertices.Add(new Vertex(new Vector3(center.X - halfSize, center.Y - halfSize, floor),
+                Vector3.UnitZ, Vector2.Zero, gridTint, gridMaterial, gridMaterial, 1f, false, true));
+            vertices.Add(new Vertex(new Vector3(center.X + halfSize, center.Y - halfSize, floor),
+                Vector3.UnitZ, Vector2.Zero, gridTint, gridMaterial, gridMaterial, 1f, false, true));
+            vertices.Add(new Vertex(new Vector3(center.X + halfSize, center.Y + halfSize, floor),
+                Vector3.UnitZ, Vector2.Zero, gridTint, gridMaterial, gridMaterial, 1f, false, true));
+            vertices.Add(new Vertex(new Vector3(center.X - halfSize, center.Y + halfSize, floor),
+                Vector3.UnitZ, Vector2.Zero, gridTint, gridMaterial, gridMaterial, 1f, false, true));
+            indices.Add(first);
+            indices.Add(first + 1);
+            indices.Add(first + 2);
+            indices.Add(first);
+            indices.Add(first + 2);
+            indices.Add(first + 3);
+            drawRanges.Add((string.Empty, string.Empty, string.Empty, string.Empty,
+                gridTint, gridMaterial, gridMaterial, 1f, 0f, false, false,
+                new Vector3(center.X, center.Y, floor), indexStart, 6));
         }
 
         var newVertexBuffer = _device!.CreateBuffer(vertices.ToArray(), BindFlags.VertexBuffer);
@@ -964,7 +1154,9 @@ public sealed class MainRenderer : IDisposable
 
     private void SetTexture(string? nifTexturePath, uint slot)
     {
-        _context!.PSSetShaderResource(slot, slot == 0 ? _whiteTextureView : _blackTextureView);
+        // A missing environment mask should leave the cubemap unmasked, not hide it.
+        _context!.PSSetShaderResource(
+            slot, slot is 0 or 2 ? _whiteTextureView : _blackTextureView);
 
         var relativePath = (nifTexturePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
         if (string.IsNullOrWhiteSpace(relativePath)) return;
@@ -992,84 +1184,158 @@ public sealed class MainRenderer : IDisposable
         }
 
         using (stream)
-        using (var memory = new MemoryStream())
         {
-            stream.CopyTo(memory);
-            byte[] bytes = memory.ToArray();
-            if (bytes.Length < 128 || BitConverter.ToUInt32(bytes, 0) != 0x20534444)
+            var dds = DdsFile.Load(stream);
+            var decoded = new BcDecoder().Decode2D(dds);
+            var decodedPixels = decoded.Span;
+            if (decodedPixels.Width <= 0 || decodedPixels.Height <= 0)
             {
-                _log.LogWarning("Texture {TexturePath} is not a supported DDS", relativePath);
+                _log.LogWarning("Texture {TexturePath} has invalid dimensions", relativePath);
                 _unavailableTexturePaths.Add(textureRelativePath);
                 return;
             }
 
-            var height = checked((int)BitConverter.ToUInt32(bytes, 12));
-            var width = checked((int)BitConverter.ToUInt32(bytes, 16));
-            var fourCc = System.Text.Encoding.ASCII.GetString(bytes, 84, 4);
-            var format = fourCc switch
+            var width = decodedPixels.Width;
+            var height = decodedPixels.Height;
+            var pixels = new byte[checked(width * height * 4)];
+            for (var y = 0; y < height; y++)
             {
-                "DXT1" => Format.BC1_UNorm,
-                "DXT3" => Format.BC2_UNorm,
-                "DXT5" => Format.BC3_UNorm,
-                _ => Format.Unknown
-            };
-            if (format == Format.Unknown || width <= 0 || height <= 0)
-            {
-                _log.LogWarning("DDS format {Format} for {TexturePath} is unsupported", fourCc, relativePath);
-                _unavailableTexturePaths.Add(textureRelativePath);
-                return;
-            }
-
-            var blockBytes = format == Format.BC1_UNorm ? 8 : 16;
-            var maxMipLevels = 1 + (int)MathF.Floor(MathF.Log2(Math.Max(width, height)));
-            var mipLevels = Math.Clamp((int)BitConverter.ToUInt32(bytes, 28), 1, maxMipLevels);
-            var mipDescriptions = new (int Width, int Height, int RowPitch, int DataSize)[mipLevels];
-            var dataOffset = 128;
-            var mipDataIsValid = true;
-            for (var level = 0; level < mipLevels; level++)
-            {
-                var mipWidth = Math.Max(1, width >> level);
-                var mipHeight = Math.Max(1, height >> level);
-                var rowPitch = Math.Max(1, (mipWidth + 3) / 4) * blockBytes;
-                var dataSize = rowPitch * Math.Max(1, (mipHeight + 3) / 4);
-                mipDescriptions[level] = (mipWidth, mipHeight, rowPitch, dataSize);
-                if (dataOffset > bytes.Length - dataSize)
+                for (var x = 0; x < width; x++)
                 {
-                    mipDataIsValid = false;
-                    break;
+                    var pixel = decodedPixels[y, x];
+                    var offset = (y * width + x) * 4;
+                    pixels[offset] = pixel.r;
+                    pixels[offset + 1] = pixel.g;
+                    pixels[offset + 2] = pixel.b;
+                    pixels[offset + 3] = pixel.a;
                 }
-                dataOffset += dataSize;
-            }
-            if (!mipDataIsValid)
-            {
-                _unavailableTexturePaths.Add(textureRelativePath);
-                return;
             }
 
             var description = new Texture2DDescription
             {
-                Width = (uint)width, Height = (uint)height, MipLevels = (uint)mipLevels, ArraySize = 1,
-                Format = format, SampleDescription = new SampleDescription(1, 0),
+                Width = (uint)width, Height = (uint)height, MipLevels = 1, ArraySize = 1,
+                Format = Format.R8G8B8A8_UNorm, SampleDescription = new SampleDescription(1, 0),
                 Usage = ResourceUsage.Immutable, BindFlags = BindFlags.ShaderResource
             };
             unsafe
             {
-                fixed (byte* textureData = bytes)
+                fixed (byte* textureData = pixels)
                 {
-                    var initialData = new SubresourceData[mipLevels];
-                    var mipOffset = 128;
-                    for (var level = 0; level < mipLevels; level++)
-                    {
-                        var mip = mipDescriptions[level];
-                        initialData[level] = new SubresourceData(
-                            (IntPtr)(textureData + mipOffset), (uint)mip.RowPitch, (uint)mip.DataSize);
-                        mipOffset += mip.DataSize;
-                    }
-                    var texture = _device!.CreateTexture2D(description, initialData);
+                    var initialData = new SubresourceData((IntPtr)textureData, (uint)(width * 4), (uint)pixels.Length);
+                    var texture = _device!.CreateTexture2D(description, [initialData]);
                     var view = _device.CreateShaderResourceView(texture);
                     _textureCache.Add(textureRelativePath, (texture, view));
                     _context.PSSetShaderResource(slot, view);
                 }
+            }
+        }
+    }
+
+    private void SetEnvironmentMap(string? nifTexturePath, uint slot)
+    {
+        var relativePath = (nifTexturePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            _context!.PSSetShaderResource(slot, null!);
+            return;
+        }
+
+        var textureRelativePath = relativePath.StartsWith("textures/", StringComparison.OrdinalIgnoreCase)
+            ? relativePath
+            : "textures/" + relativePath;
+        if (_environmentTextureCache.TryGetValue(textureRelativePath, out var cachedTexture))
+        {
+            _context!.PSSetShaderResource(slot, cachedTexture.View);
+            return;
+        }
+
+        var loosePath = Path.Combine(
+            _dataFolderPath ?? string.Empty,
+            textureRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        var stream = File.Exists(loosePath)
+            ? File.OpenRead(loosePath)
+            : _bsaFileProvider.GetFileFromAny(textureRelativePath);
+        if (stream is null)
+        {
+            _log.LogDebug("Environment map {TexturePath} was not found", relativePath);
+            _context!.PSSetShaderResource(slot, null!);
+            return;
+        }
+
+        using (stream)
+        {
+            var dds = DdsFile.Load(stream);
+            if (dds.Faces.Count != 6 || dds.Faces.Any(face => face.MipMaps.Length == 0))
+            {
+                _log.LogWarning("Environment map {TexturePath} is not a six-face DDS cubemap", relativePath);
+                _context!.PSSetShaderResource(slot, null!);
+                return;
+            }
+
+            var decoder = new BcDecoder();
+            if (!decoder.IsSupportedFormat(dds))
+            {
+                _log.LogWarning("Environment map {TexturePath} has an unsupported DDS format", relativePath);
+                _context!.PSSetShaderResource(slot, null!);
+                return;
+            }
+
+            var width = checked((int)dds.Faces[0].Width);
+            var height = checked((int)dds.Faces[0].Height);
+            var format = decoder.GetFormat(dds);
+            var facePixels = new byte[6][];
+            for (var faceIndex = 0; faceIndex < dds.Faces.Count; faceIndex++)
+            {
+                var face = dds.Faces[faceIndex];
+                if (face.Width != (uint)width || face.Height != (uint)height)
+                {
+                    _log.LogWarning("Environment map {TexturePath} has inconsistent cubemap face dimensions", relativePath);
+                    _context!.PSSetShaderResource(slot, null!);
+                    return;
+                }
+
+                var decodedFace = decoder.DecodeRaw2D(
+                    face.MipMaps[0].Data, width, height, format).Span;
+                var pixels = new byte[checked(width * height * 4)];
+                for (var y = 0; y < height; y++)
+                {
+                    for (var x = 0; x < width; x++)
+                    {
+                        var pixel = decodedFace[y, x];
+                        var offset = (y * width + x) * 4;
+                        pixels[offset] = pixel.r;
+                        pixels[offset + 1] = pixel.g;
+                        pixels[offset + 2] = pixel.b;
+                        pixels[offset + 3] = pixel.a;
+                    }
+                }
+                facePixels[faceIndex] = pixels;
+            }
+
+            var description = new Texture2DDescription
+            {
+                Width = (uint)width, Height = (uint)height, MipLevels = 1, ArraySize = 6,
+                Format = Format.R8G8B8A8_UNorm, SampleDescription = new SampleDescription(1, 0),
+                Usage = ResourceUsage.Immutable, BindFlags = BindFlags.ShaderResource,
+                MiscFlags = ResourceOptionFlags.TextureCube
+            };
+            var pinnedPixels = facePixels.Select(pixels => GCHandle.Alloc(pixels, GCHandleType.Pinned)).ToArray();
+            try
+            {
+                var initialData = pinnedPixels.Select((handle, index) => new SubresourceData(
+                    handle.AddrOfPinnedObject(), (uint)(width * 4), (uint)facePixels[index].Length)).ToArray();
+                var texture = _device!.CreateTexture2D(description, initialData);
+                var viewDescription = new ShaderResourceViewDescription(
+                    ShaderResourceViewDimension.TextureCube, Format.R8G8B8A8_UNorm,
+                    0, 1, 0, 6, BufferExtendedShaderResourceViewFlags.None);
+                var view = _device.CreateShaderResourceView(texture, viewDescription);
+                _environmentTextureCache.Add(textureRelativePath, (texture, view));
+                _context!.PSSetShaderResource(slot, view);
+            }
+            finally
+            {
+                foreach (var handle in pinnedPixels)
+                    handle.Free();
             }
         }
     }
@@ -1203,19 +1469,22 @@ public sealed class MainRenderer : IDisposable
             var constants = new SceneConstants
             {
                 WorldViewProjection = worldViewProjection,
-                LightDirection = new Vector4(_cellLighting.Direction, 0f),
+                LightDirection = new Vector4(_previewMode
+                    ? Vector3.Normalize(new Vector3(-0.45f, -0.35f, 0.82f))
+                    : _cellLighting.Direction, 0f),
                 CameraPosition = new Vector4(cameraPosition, 1f),
-                AmbientLightColor = new Vector4(_cellLighting.Ambient, 1f),
-                DirectionalLightColor = new Vector4(_cellLighting.Directional, 1f),
-                PointLightCount = new Vector4(selectedLights.Length, 0f, 0f, 0f)
+                AmbientLightColor = new Vector4(_previewMode ? new Vector3(0.38f) : _cellLighting.Ambient, 1f),
+                DirectionalLightColor = new Vector4(_previewMode ? new Vector3(1.8f, 1.75f, 1.68f) : _cellLighting.Directional, 1f),
+                PointLightCount = new Vector4(_previewMode ? 0 : selectedLights.Length, 0f, 0f, 0f)
             };
 
             for (var i = 0; i < _cellLighting.AmbientCube.Length; i++)
             {
                 var offset = i * 4;
-                constants.AmbientLightCube[offset] = _cellLighting.AmbientCube[i].X;
-                constants.AmbientLightCube[offset + 1] = _cellLighting.AmbientCube[i].Y;
-                constants.AmbientLightCube[offset + 2] = _cellLighting.AmbientCube[i].Z;
+                var ambient = _previewMode ? new Vector3(0.38f) : _cellLighting.AmbientCube[i];
+                constants.AmbientLightCube[offset] = ambient.X;
+                constants.AmbientLightCube[offset + 1] = ambient.Y;
+                constants.AmbientLightCube[offset + 2] = ambient.Z;
                 constants.AmbientLightCube[offset + 3] = 1f;
             }
 
@@ -1344,6 +1613,12 @@ public sealed class MainRenderer : IDisposable
             texture.Texture.Dispose();
         }
         _textureCache.Clear();
+        foreach (var texture in _environmentTextureCache.Values)
+        {
+            texture.View.Dispose();
+            texture.Texture.Dispose();
+        }
+        _environmentTextureCache.Clear();
         _whiteTextureView?.Dispose();
         _whiteTextureView = null;
         _whiteTexture?.Dispose();

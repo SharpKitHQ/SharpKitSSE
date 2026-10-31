@@ -79,8 +79,8 @@ public partial class FormExplorer : Window
         
         _vm.Items.Add(new TreeItem("Items", null, [
             new TreeItem("Ammo", typeof(Ammunition), null, mod => mod.SelectMany(m => m.Ammunitions)),
-            new TreeItem("Armor", typeof(Armor), null, mod => mod.SelectMany(m => m.Armors)),
-            new TreeItem("Armor Addon", typeof(ArmorAddon), null, mod => mod.SelectMany(m => m.ArmorAddons)),
+            new TreeItem("Armor", typeof(IArmor), null, mod => mod.SelectMany(m => m.Armors)),
+            new TreeItem("Armor Addon", typeof(IArmorAddon), null, mod => mod.SelectMany(m => m.ArmorAddons)),
             new TreeItem("Book", typeof(Book), null, mod => mod.SelectMany(m => m.Books)),
             new TreeItem("Constructible Object", typeof(ConstructibleObject), null, mod => mod.SelectMany(m => m.ConstructibleObjects)),
             new TreeItem("Ingredient", typeof(Ingredient), null, mod => mod.SelectMany(m => m.Ingredients)),

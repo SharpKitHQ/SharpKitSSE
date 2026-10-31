@@ -13,6 +13,8 @@ cbuffer SceneConstants : register(b0)
 
 Texture2D DiffuseTexture : register(t0);
 Texture2D EmissiveTexture : register(t1);
+Texture2D EnvironmentMaskTexture : register(t2);
+TextureCube EnvironmentTexture : register(t3);
 SamplerState DiffuseSampler : register(s0);
 
 float3 EvaluateAmbient(float3 normal);
@@ -60,6 +62,27 @@ VSOutput VSMain(VSInput input)
 
 float4 PSMain(VSOutput input) : SV_TARGET
 {
+    if (input.Material.z > 0.5f)
+    {
+        float2 worldPosition = input.WorldPos.xy;
+        float2 minorCoordinates = worldPosition;
+        float2 majorCoordinates = worldPosition * 0.1f;
+        float2 minorDistance = abs(frac(minorCoordinates - 0.5f) - 0.5f);
+        float2 majorDistance = abs(frac(majorCoordinates - 0.5f) - 0.5f);
+        float minorLine = 1.0f - smoothstep(
+            0.035f, 0.035f + max(fwidth(minorCoordinates.x), fwidth(minorCoordinates.y)),
+            min(minorDistance.x, minorDistance.y));
+        float majorLine = 1.0f - smoothstep(
+            0.035f, 0.035f + max(fwidth(majorCoordinates.x), fwidth(majorCoordinates.y)),
+            min(majorDistance.x, majorDistance.y));
+        float gridAlpha = max(minorLine * 0.5f, majorLine * 0.95f);
+        clip(gridAlpha - 0.01f);
+
+        float3 gridColor = lerp(float3(0.52f, 0.54f, 0.56f),
+            float3(0.82f, 0.84f, 0.86f), majorLine);
+        return float4(gridColor, gridAlpha);
+    }
+
     float3 n = normalize(input.Normal);
     float4 texel = DiffuseTexture.Sample(DiffuseSampler, input.TexCoord);
     clip(texel.a - 0.01f);
@@ -98,6 +121,13 @@ float4 PSMain(VSOutput input) : SV_TARGET
         : float3(1.0f, 1.0f, 1.0f);
     float3 emissive = input.Emissive.rgb * input.Emissive.a * emissiveMask;
     float3 linearColor = albedo * lighting * 1.35f + emissive;
+    if (input.Material.w > 0.0f)
+    {
+        float environmentMask = EnvironmentMaskTexture.Sample(DiffuseSampler, input.TexCoord).r;
+        float3 reflectionDirection = reflect(-viewDirection, n);
+        float3 environmentColor = EnvironmentTexture.Sample(DiffuseSampler, reflectionDirection).rgb;
+        linearColor += SrgbToLinear(environmentColor) * environmentMask * input.Material.w;
+    }
     float3 mappedColor = linearColor / (1.0f + linearColor);
     float3 outputColor = LinearToSrgb(mappedColor);
 

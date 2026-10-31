@@ -5,12 +5,12 @@ using Mutagen.Bethesda;
 using Mutagen.Bethesda.Skyrim;
 using SharpKit.Reflection;
 using SharpKit.Util;
+using SharpKit.Windows.Data.FormEditors.Other;
 using Armor = Mutagen.Bethesda.Skyrim.Armor;
 using IArmorGetter = Mutagen.Bethesda.Skyrim.IArmorGetter;
 
 namespace SharpKit.Windows.Data.FormEditors.Items;
 
-[RecordEditor(typeof(Armor))]
 public partial class ArmorItemEditor : RecordEditorWindow<IArmorGetter>
 {
     public Armor LocalCopy { get; set; }
@@ -26,6 +26,10 @@ public partial class ArmorItemEditor : RecordEditorWindow<IArmorGetter>
     public IMaterialTypeGetter? BlockMaterial { get; set; }
     
     public IRaceGetter? Race { get; set; }
+    
+    public string? WorldModelMale { get; set; }
+    
+    public string? WorldModelFemale { get; set; }
 
     public Lazy<List<IObjectEffectGetter>?> Enchantments { get; private init; } = PluginFileManager.Enchantments;
     public Lazy<List<IArmorGetter>?> Armors { get; private init; } = PluginFileManager.Armors;
@@ -72,7 +76,16 @@ public partial class ArmorItemEditor : RecordEditorWindow<IArmorGetter>
             BipedFlags = (uint)armor.BodyTemplate?.FirstPersonFlags!;
 
         Keywords = [.. armor.Keywords?.Select(k => k.Resolve(pfm.GetEnv().LinkCache)).ToList() ?? []];
+
+        WorldModelMale = armor.WorldModel?.Male?.Model?.File.GivenPath;
+        WorldModelFemale = armor.WorldModel?.Female?.Model?.File.GivenPath;
         
         DataContext = this;
+    }
+
+    private void WorldModel_Male_OnClick(object sender, RoutedEventArgs e)
+    {
+        var picker = new ModelPicker(LocalCopy.WorldModel?.Male?.Model);
+        picker.ShowDialog();
     }
 }

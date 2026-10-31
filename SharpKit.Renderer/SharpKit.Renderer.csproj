@@ -10,6 +10,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="BCnEncoder.Net" Version="2.3.0" />
         <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.13" />
         <PackageReference Include="Nifly" Version="1.1.0" />
         <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
